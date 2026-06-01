@@ -15,5 +15,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         const subscription = (event, value) => callback(value);
         ipcRenderer.on('automation-finished', subscription);
         return () => ipcRenderer.removeListener('automation-finished', subscription);
-    }
+    },
+    authAuthorize: (email) => ipcRenderer.invoke('auth-authorize', email),
+    authTrackLogout: (email) => ipcRenderer.invoke('auth-track-logout', email),
+    setAuthEmail: (email) => ipcRenderer.send('set-auth-email', email)
 });

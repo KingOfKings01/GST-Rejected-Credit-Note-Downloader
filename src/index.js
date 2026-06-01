@@ -515,3 +515,127 @@ document.addEventListener('DOMContentLoaded', () => {
         step1View.classList.remove('hidden-panel');
     });
 });
+
+// --- Auth Provider Integration ---
+document.addEventListener('DOMContentLoaded', () => {
+    const authPanel = document.getElementById('auth-panel');
+    const appContent = document.getElementById('app-content');
+    const authForm = document.getElementById('auth-form');
+    const authEmailInput = document.getElementById('auth-email');
+    const authOtpGroup = document.getElementById('auth-otp-group');
+    const authOtpInput = document.getElementById('auth-otp');
+    const authEmailGroup = document.getElementById('auth-email-group');
+    const authErrorMsg = document.getElementById('auth-error-msg');
+    const authSubmitBtn = document.getElementById('btn-auth-submit');
+    const logoutBtn = document.getElementById('btn-logout');
+
+    let currentStage = 'email'; // 'email' or 'otp'
+    let generatedOtp = '';
+    let targetEmail = '';
+
+    // Always show auth panel on startup
+    showAuthPanel();
+
+    authForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        if (currentStage === 'email') {
+            const email = authEmailInput.value.trim();
+            if (!email) return;
+            targetEmail = email;
+            requestOtp(email);
+        } else if (currentStage === 'otp') {
+            const userOtp = authOtpInput.value.trim();
+            console.log('--- OTP COMPARISON ---');
+            console.log('User OTP input:', JSON.stringify(userOtp));
+            console.log('Generated OTP:', JSON.stringify(generatedOtp));
+            console.log('Match result:', userOtp == generatedOtp);
+            console.log('----------------------');
+            if (userOtp == generatedOtp || userOtp === String(generatedOtp)) {
+                // Save user email in main process for auto-logout tracking
+                window.electronAPI.setAuthEmail(targetEmail);
+                document.getElementById('user-display-email').textContent = targetEmail;
+                showAppContent();
+            } else {
+                showAuthError('Invalid verification code. Please try again.');
+            }
+        }
+    });
+
+    logoutBtn.addEventListener('click', async () => {
+        if (targetEmail) {
+            await window.electronAPI.authTrackLogout(targetEmail);
+        }
+        window.electronAPI.setAuthEmail(null);
+        showAuthPanel();
+    });
+
+    async function requestOtp(email) {
+        setAuthLoading(true);
+        hideAuthError();
+
+        try {
+            const result = await window.electronAPI.authAuthorize(email);
+            if (result.success) {
+                generatedOtp = result.otp;
+                // Transition to OTP stage
+                currentStage = 'otp';
+                authEmailGroup.classList.add('hidden-panel');
+                authOtpGroup.classList.remove('hidden-panel');
+                authOtpInput.required = true;
+                authOtpInput.focus();
+                authSubmitBtn.textContent = 'Verify OTP';
+            } else {
+                showAuthError(result.message || 'Access denied. Your email is not authorized or is blocked.');
+                showAuthPanel();
+            }
+        } catch (err) {
+            console.error('Authentication request failed:', err);
+            showAuthError('Failed to connect to authorization service.');
+            showAuthPanel();
+        } finally {
+            setAuthLoading(false);
+        }
+    }
+
+    function setAuthLoading(isLoading) {
+        authSubmitBtn.disabled = isLoading;
+        authEmailInput.disabled = isLoading;
+        authOtpInput.disabled = isLoading;
+        if (isLoading) {
+            authSubmitBtn.textContent = currentStage === 'email' ? 'Sending code...' : 'Verifying...';
+        } else {
+            authSubmitBtn.textContent = currentStage === 'email' ? 'Send Verification Code' : 'Verify OTP';
+        }
+    }
+
+    function showAuthError(message) {
+        authErrorMsg.textContent = message;
+        authErrorMsg.classList.remove('hidden-panel');
+    }
+
+    function hideAuthError() {
+        authErrorMsg.classList.add('hidden-panel');
+        authErrorMsg.textContent = '';
+    }
+
+    function showAppContent() {
+        authPanel.classList.add('hidden-panel');
+        appContent.classList.remove('hidden-panel');
+    }
+
+    function showAuthPanel() {
+        appContent.classList.add('hidden-panel');
+        authPanel.classList.remove('hidden-panel');
+        authEmailGroup.classList.remove('hidden-panel');
+        authOtpGroup.classList.add('hidden-panel');
+        authEmailInput.value = '';
+        authOtpInput.value = '';
+        authOtpInput.required = false;
+        currentStage = 'email';
+        generatedOtp = '';
+        targetEmail = '';
+        authSubmitBtn.textContent = 'Send Verification Code';
+        hideAuthError();
+    }
+});

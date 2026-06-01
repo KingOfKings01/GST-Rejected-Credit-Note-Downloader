@@ -219,3 +219,91 @@ ipcMain.on('stop-automation', () => {
         activeChildProcess = null;
     }
 });
+
+// --- Auth Provider Integration ---
+const AUTH_APP_ID = "d3035480-3654-4433-b616-671c13713ae2";
+const AUTH_API_KEY = "de16c6e9b3956011bb388a38cc1c56e3a8e28d371fcd1ab1";
+const AUTH_BASE_URL = "http://13.234.77.157/auth/api";
+
+// IPC Handler for user authorization
+ipcMain.handle('auth-authorize', async (event, email) => {
+    try {
+        const response = await fetch(`${AUTH_BASE_URL}/authorize`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                app_id: AUTH_APP_ID,
+                api_key: AUTH_API_KEY,
+                email: email
+            })
+        });
+
+        const data = await response.json();
+        console.log('--- AUTH API RESPONSE ---');
+        console.log('Status:', response.status);
+        console.log('Data:', JSON.stringify(data, null, 2));
+        console.log('-------------------------');
+        return { success: response.ok && data.authorized, ...data };
+    } catch (error) {
+        console.error('Auth API error:', error);
+        return { success: false, message: error.message || 'Network error occurred' };
+    }
+});
+
+// IPC Handler for tracking logout
+ipcMain.handle('auth-track-logout', async (event, email) => {
+    try {
+        const response = await fetch(`${AUTH_BASE_URL}/track-logout`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                app_id: AUTH_APP_ID,
+                api_key: AUTH_API_KEY,
+                email: email
+            })
+        });
+
+        const data = await response.json();
+        return { success: response.ok && data.success, ...data };
+    } catch (error) {
+        console.error('Logout track API error:', error);
+        return { success: false, message: error.message || 'Network error occurred' };
+    }
+});
+
+let authenticatedEmail = null;
+
+// Save auth email when logged in
+ipcMain.on('set-auth-email', (event, email) => {
+    authenticatedEmail = email;
+});
+
+// Auto track logout on app quit
+app.on('will-quit', async (event) => {
+    if (authenticatedEmail) {
+        event.preventDefault();
+        try {
+            console.log('Auto-logging out user on app exit:', authenticatedEmail);
+            await fetch(`${AUTH_BASE_URL}/track-logout`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    app_id: AUTH_APP_ID,
+                    api_key: AUTH_API_KEY,
+                    email: authenticatedEmail
+                })
+            });
+        } catch (err) {
+            console.error('Failed to auto-logout on exit:', err);
+        } finally {
+            authenticatedEmail = null;
+            app.quit();
+        }
+    }
+});
