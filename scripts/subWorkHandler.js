@@ -1,0 +1,135 @@
+const path = require('path');
+const fs = require('fs'); // CRITICAL: Added File System module to build folders
+
+/**
+ * Handles the actions inside a specific invoice category drill-down view.
+ * Opens the filter pane, selects 'Rejected', applies the filter, and downloads the Excel report if data exists.
+ * * Saves file inside dynamic folder structure: downloadFolder/clientName/stateName/month/
+ * * @param {import('playwright').Page} page - The active Playwright page instance
+ * @param {string} downloadFolder - The root download directory from the GUI config panel
+ * @param {object} client - The active client configuration containing metadata
+ * @param {string} month - The currently evaluated targeted lookback month string name
+ */
+async function processRejectedInvoices(page, downloadFolder, client, month) {
+    const { clientName, stateName } = client;
+
+    try {
+        // 1. Locate and click the "Filter" button
+        const filterButton = page.locator('button#showbutton');
+        await filterButton.waitFor({ state: 'visible', timeout: 10000 });
+
+        await filterButton.click();
+        await page.waitForTimeout(1500);
+
+        // 2. Locate the precise "Status" dropdown form element
+        const statusDropdown = page.locator('select[ng-model="status"]');
+        await statusDropdown.waitFor({ state: 'visible', timeout: 10000 });
+
+        await statusDropdown.click();
+        await page.waitForTimeout(500);
+
+        await statusDropdown.selectOption({ value: 'Rejected', label: 'Rejected' });
+
+        await statusDropdown.dispatchEvent('change');
+        await page.waitForTimeout(500);
+
+        // 3. Click the "Apply" button
+        const applyButton = page.locator('button[ng-click*="suppfilterButton"]');
+        await applyButton.waitFor({ state: 'visible', timeout: 10000 });
+        await applyButton.click();
+
+        await page.waitForLoadState('networkidle');
+        
+        // Wait for any loading spinner to disappear once before starting checks
+        const spinner = page.locator('.loading, .loading-backdrop, #loading, .spinner, .ajax-loader').first();
+        try {
+            await page.waitForTimeout(500); // Wait briefly for spinner to render
+            if (await spinner.isVisible()) {
+                await spinner.waitFor({ state: 'hidden', timeout: 8000 });
+            }
+        } catch (spinnerErr) {
+            // Spinner did not show or already hidden
+        }
+        
+        await page.waitForTimeout(2000); // Stable render timeout
+
+        // --- 4. CONDITIONAL DOWNLOAD CHECK ---
+        const downloadButton = page.locator('button[data-ng-click*="exportDataOut"]').first();
+        const noRecordAlert = page.locator('.alert-danger', { hasText: /No record found/i }).first();
+        
+        let isDataPresent = false;
+        
+        // Register dialog listener to handle any alerts (e.g. "No records found")
+        const dialogHandler = async (dialog) => {
+            await dialog.dismiss().catch(() => {});
+        };
+        page.on('dialog', dialogHandler);
+
+        try {
+            // Wait up to 10 seconds (20 * 500ms) for either "No record found" to show or download button to enable
+            for (let attempt = 0; attempt < 20; attempt++) {
+                if (await noRecordAlert.isVisible()) {
+                    isDataPresent = false;
+                    break;
+                }
+                if (await downloadButton.isVisible() && await downloadButton.isEnabled()) {
+                    isDataPresent = true;
+                    break;
+                }
+                await page.waitForTimeout(500);
+            }
+
+            if (!isDataPresent) {
+                console.log(`⚠️ [Alert Detected]: 'No record found' or download unavailable for ${clientName} (${month}). Skipping download.`);
+            } else {
+                console.log("📊 Data table is present! Preparing to download Excel report...");
+
+                // Set up a promise listener with a 15-second timeout to intercept the browser file stream download event
+                const downloadPromise = page.waitForEvent('download', { timeout: 15000 }).catch((e) => {
+                    console.log(`⚠️ Download event did not trigger or timed out: ${e.message || e}`);
+                    return null;
+                });
+
+                await downloadButton.click();
+
+                // Resolve the event promise stream to catch the file payload metadata
+                const download = await downloadPromise;
+
+                if (download) {
+                    const suggestedFileName = download.suggestedFilename();
+
+                    // =========================================================================
+                    // 🛠️ DYNAMIC FOLDER STRUCTURE CREATION ENGINE
+                    // =========================================================================
+                    // Build absolute path to target sub-folder chain string: /Downloads/ClientName/State/Month
+                    const targetNestedDirectory = path.join(downloadFolder, clientName, stateName, month);
+
+                    // If any folders in this chain are missing, recursively build them automatically on the drive
+                    if (!fs.existsSync(targetNestedDirectory)) {
+                        fs.mkdirSync(targetNestedDirectory, { recursive: true });
+                    }
+
+                    // Append the actual file payload name to our newly configured directory
+                    const finalSavePath = path.join(targetNestedDirectory, suggestedFileName);
+                    // =========================================================================
+
+                    // Commit file payload to your custom physical nested drive path layout
+                    await download.saveAs(finalSavePath);
+                    return true;
+                }
+            }
+        } finally {
+            // Clean up dialog handler to prevent memory leaks and unintended side effects on other pages
+            page.off('dialog', dialogHandler);
+        }
+
+        await page.waitForTimeout(1000);
+        return false;
+
+    } catch (error) {
+        console.error("❌ An error occurred inside the sub-work routine:", error);
+        throw error;
+    }
+}
+
+module.exports = { processRejectedInvoices };
