@@ -180,12 +180,22 @@ function renderClientsList() {
     const query = clientSearchInput.value.toLowerCase().trim();
     clientListContainer.innerHTML = '';
 
+    const onlyReady = document.getElementById('chk-only-ready-zips')?.checked;
+    const onlyFailed = document.getElementById('chk-only-failed')?.checked;
     const filtered = loadedClients.filter(c => {
-        return (c.clientName && c.clientName.toLowerCase().includes(query)) ||
+        const matchesQuery = (c.clientName && c.clientName.toLowerCase().includes(query)) ||
                (c.stateName && c.stateName.toLowerCase().includes(query)) ||
                (c.clientState && c.clientState.toLowerCase().includes(query)) ||
                (c.gstNo && c.gstNo.toLowerCase().includes(query)) ||
                (c.username && c.username.toLowerCase().includes(query));
+        
+        if (onlyReady) {
+            return matchesQuery && c.status === 'zip_ready';
+        }
+        if (onlyFailed) {
+            return matchesQuery && c.status === 'failed';
+        }
+        return matchesQuery;
     });
 
     if (filtered.length === 0) {
@@ -246,7 +256,12 @@ function renderClientsList() {
         if (client.status === 'pending') badge.textContent = 'Pending';
         else if (client.status === 'running') badge.textContent = 'Running';
         else if (client.status === 'success') badge.textContent = 'Success';
-        else if (client.status === 'failed') badge.textContent = 'Failed';
+        else if (client.status === 'failed') {
+            badge.textContent = 'Failed';
+            if (client.excelStatus) {
+                badge.title = client.excelStatus;
+            }
+        }
         else if (client.status === 'zip_pending') {
             badge.className = 'badge badge-warning';
             badge.textContent = 'Zip Pending';
@@ -308,6 +323,8 @@ function setRunningState(running) {
     chkSkipExisting.disabled = running;
     const chkOnlyReadyZips = document.getElementById('chk-only-ready-zips');
     if (chkOnlyReadyZips) chkOnlyReadyZips.disabled = running;
+    const chkOnlyFailed = document.getElementById('chk-only-failed');
+    if (chkOnlyFailed) chkOnlyFailed.disabled = running;
 
     btnRunAutomation.disabled = running;
     btnStopAutomation.disabled = !running;
@@ -321,8 +338,16 @@ async function startAutomation() {
         clientsToRun = clientsToRun.filter(c => c.status === 'zip_ready');
     }
 
+    const onlyFailed = document.getElementById('chk-only-failed').checked;
+    if (onlyFailed) {
+        clientsToRun = clientsToRun.filter(c => c.status === 'failed');
+    }
+
     if (clientsToRun.length === 0) {
-        alert(onlyReadyZips ? 'No clients with ready zips to download.' : 'Please select at least one client to run.');
+        let msg = 'Please select at least one client to run.';
+        if (onlyReadyZips) msg = 'No clients with ready zips to download.';
+        else if (onlyFailed) msg = 'No failed clients to run.';
+        alert(msg);
         return;
     }
 
@@ -525,6 +550,7 @@ btnClearConsole.addEventListener('click', () => {
 });
 
 clientSearchInput.addEventListener('input', () => {
+    clearConsole();
     renderClientsList();
 });
 
@@ -547,6 +573,52 @@ chkSkipExisting.addEventListener('change', () => {
     renderClientsList();
     updateStats();
 });
+
+const chkOnlyReadyZips = document.getElementById('chk-only-ready-zips');
+if (chkOnlyReadyZips) {
+    chkOnlyReadyZips.addEventListener('change', () => {
+        const onlyReady = chkOnlyReadyZips.checked;
+        if (onlyReady) {
+            // Uncheck Only Failed if checking Only Ready Zips
+            const chkOnlyFailed = document.getElementById('chk-only-failed');
+            if (chkOnlyFailed) chkOnlyFailed.checked = false;
+            
+            loadedClients.forEach(c => {
+                c.selected = (c.status === 'zip_ready');
+            });
+        } else {
+            const skipChecked = chkSkipExisting.checked;
+            loadedClients.forEach(c => {
+                c.selected = skipChecked && c.status === 'success' ? false : true;
+            });
+        }
+        renderClientsList();
+        updateStats();
+    });
+}
+
+const chkOnlyFailed = document.getElementById('chk-only-failed');
+if (chkOnlyFailed) {
+    chkOnlyFailed.addEventListener('change', () => {
+        const onlyFailed = chkOnlyFailed.checked;
+        if (onlyFailed) {
+            // Uncheck Only Ready Zips if checking Only Failed
+            const chkOnlyReadyZips = document.getElementById('chk-only-ready-zips');
+            if (chkOnlyReadyZips) chkOnlyReadyZips.checked = false;
+
+            loadedClients.forEach(c => {
+                c.selected = (c.status === 'failed');
+            });
+        } else {
+            const skipChecked = chkSkipExisting.checked;
+            loadedClients.forEach(c => {
+                c.selected = skipChecked && c.status === 'success' ? false : true;
+            });
+        }
+        renderClientsList();
+        updateStats();
+    });
+}
 
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
@@ -831,29 +903,36 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (c.excelStatus && c.excelStatus.startsWith('Zip Pending')) {
                 const parts = c.excelStatus.split('|').map(s => s.trim());
-                if (parts.length >= 4) {
-                    const readyAt = parseInt(parts[2], 10);
-                    const now = Date.now();
-                    
-                    const badge = document.getElementById(`badge-${c.username}`);
-                    if (now < readyAt) {
-                        c.status = 'zip_pending';
-                        if (badge) {
-                            const diffSeconds = Math.max(0, Math.floor((readyAt - now) / 1000));
-                            const mins = Math.floor(diffSeconds / 60);
-                            const secs = diffSeconds % 60;
-                            badge.className = 'badge badge-warning';
-                            badge.textContent = `Zip Pending (${mins}:${secs.toString().padStart(2, '0')})`;
+                let readyAt = 0;
+                if (parts.length >= 3) {
+                    readyAt = parseInt(parts[2], 10) || 0;
+                }
+                const now = Date.now();
+                
+                const badge = document.getElementById(`badge-${c.username}`);
+                if (now < readyAt) {
+                    c.status = 'zip_pending';
+                    if (badge) {
+                        const diffSeconds = Math.max(0, Math.floor((readyAt - now) / 1000));
+                        const mins = Math.floor(diffSeconds / 60);
+                        const secs = diffSeconds % 60;
+                        badge.className = 'badge badge-warning';
+                        badge.textContent = `Zip Pending (${mins}:${secs.toString().padStart(2, '0')})`;
+                    }
+                } else {
+                    if (c.status === 'zip_pending') {
+                        showNotification(c);
+                        const chkOnlyReady = document.getElementById('chk-only-ready-zips');
+                        if (chkOnlyReady && chkOnlyReady.checked) {
+                            c.selected = true;
+                            renderClientsList();
+                            updateStats();
                         }
-                    } else {
-                        if (c.status === 'zip_pending') {
-                            showNotification(c);
-                        }
-                        c.status = 'zip_ready';
-                        if (badge) {
-                            badge.className = 'badge badge-success';
-                            badge.textContent = 'zips is ready to download';
-                        }
+                    }
+                    c.status = 'zip_ready';
+                    if (badge) {
+                        badge.className = 'badge badge-success';
+                        badge.textContent = 'zips is ready to download';
                     }
                 }
             }
