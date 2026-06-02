@@ -646,4 +646,93 @@ document.addEventListener('DOMContentLoaded', () => {
         authSubmitBtn.textContent = 'Send Verification Code';
         hideAuthError();
     }
+
+    // --- REPORT CONSOLIDATOR INTEGRATION ---
+    const tabDownloader = document.getElementById('tab-downloader');
+    const tabConsolidator = document.getElementById('tab-consolidator');
+    const viewStep1 = document.getElementById('view-step-1');
+    const viewStep2 = document.getElementById('view-step-2');
+    const viewConsolidator = document.getElementById('view-consolidator');
+    
+    const btnBrowseConsolidateSrc = document.getElementById('btn-browse-consolidate-src');
+    const consolidateSrcDisplay = document.getElementById('consolidate-src-display');
+    const btnRunConsolidation = document.getElementById('btn-run-consolidation');
+    const consolidateConsoleOutput = document.getElementById('consolidate-console-output');
+
+    let consolidateSourceDir = '';
+    let downloaderWasOnStep2 = false;
+
+    // Tab Switching
+    tabDownloader.addEventListener('click', () => {
+        tabDownloader.classList.add('active');
+        tabConsolidator.classList.remove('active');
+        
+        viewConsolidator.classList.add('hidden-panel');
+        if (downloaderWasOnStep2) {
+            viewStep2.classList.remove('hidden-panel');
+        } else {
+            viewStep1.classList.remove('hidden-panel');
+        }
+    });
+
+    tabConsolidator.addEventListener('click', () => {
+        tabConsolidator.classList.add('active');
+        tabDownloader.classList.remove('active');
+        
+        downloaderWasOnStep2 = !viewStep2.classList.contains('hidden-panel');
+        
+        viewStep1.classList.add('hidden-panel');
+        viewStep2.classList.add('hidden-panel');
+        viewConsolidator.classList.remove('hidden-panel');
+    });
+
+    // Browse Source Folder for Consolidation
+    btnBrowseConsolidateSrc.addEventListener('click', async () => {
+        const dir = await window.electronAPI.selectDirectory();
+        if (dir) {
+            consolidateSourceDir = dir;
+            consolidateSrcDisplay.textContent = dir;
+            consolidateSrcDisplay.title = dir;
+            btnRunConsolidation.disabled = false;
+            appendConsolidateLog(`System: Source folder set to ${dir}`);
+        }
+    });
+
+    // Run Consolidation Action
+    btnRunConsolidation.addEventListener('click', async () => {
+        if (!consolidateSourceDir) return;
+        
+        btnRunConsolidation.disabled = true;
+        btnBrowseConsolidateSrc.disabled = true;
+        consolidateConsoleOutput.innerHTML = '';
+        appendConsolidateLog('System: Initializing report consolidation...', 'info');
+
+        const result = await window.electronAPI.runConsolidation(consolidateSourceDir);
+        
+        btnRunConsolidation.disabled = false;
+        btnBrowseConsolidateSrc.disabled = false;
+        
+        if (result.success) {
+            appendConsolidateLog('System: Consolidation process finished successfully.', 'success');
+        } else {
+            appendConsolidateLog(`System Error: Consolidation failed. ${result.error}`, 'error');
+        }
+    });
+
+    // Handle consolidation logs from the main process
+    window.electronAPI.onConsolidationLog((message) => {
+        let type = 'info';
+        if (message.includes('✅')) type = 'success';
+        if (message.includes('❌') || message.includes('Error')) type = 'error';
+        if (message.includes('⚠️')) type = 'warning';
+        appendConsolidateLog(message, type);
+    });
+
+    function appendConsolidateLog(text, type = 'info') {
+        const line = document.createElement('div');
+        line.className = `console-line ${type}`;
+        line.textContent = text;
+        consolidateConsoleOutput.appendChild(line);
+        consolidateConsoleOutput.scrollTop = consolidateConsoleOutput.scrollHeight;
+    }
 });

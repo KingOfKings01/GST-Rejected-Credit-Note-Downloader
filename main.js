@@ -220,6 +220,23 @@ ipcMain.on('stop-automation', () => {
     }
 });
 
+// IPC Handler for Report Consolidation
+ipcMain.handle('run-consolidation', async (event, sourceDir) => {
+    try {
+        const { consolidateReports } = require('./scripts/consolidate');
+        const sendLog = (msg) => {
+            if (mainWindow) {
+                mainWindow.webContents.send('consolidation-log', msg);
+            }
+        };
+        await consolidateReports(sourceDir, sendLog);
+        return { success: true };
+    } catch (err) {
+        console.error('Failed to run consolidation:', err);
+        return { success: false, error: err.message };
+    }
+});
+
 // --- Auth Provider Integration ---
 const AUTH_APP_ID = "d3035480-3654-4433-b616-671c13713ae2";
 const AUTH_API_KEY = "de16c6e9b3956011bb388a38cc1c56e3a8e28d371fcd1ab1";

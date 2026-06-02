@@ -18,5 +18,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     authAuthorize: (email) => ipcRenderer.invoke('auth-authorize', email),
     authTrackLogout: (email) => ipcRenderer.invoke('auth-track-logout', email),
-    setAuthEmail: (email) => ipcRenderer.send('set-auth-email', email)
+    setAuthEmail: (email) => ipcRenderer.send('set-auth-email', email),
+    runConsolidation: (sourceDir) => ipcRenderer.invoke('run-consolidation', sourceDir),
+    onConsolidationLog: (callback) => {
+        const subscription = (event, value) => callback(value);
+        ipcRenderer.on('consolidation-log', subscription);
+        return () => ipcRenderer.removeListener('consolidation-log', subscription);
+    }
 });
