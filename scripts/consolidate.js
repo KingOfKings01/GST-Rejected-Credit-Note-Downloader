@@ -2,6 +2,24 @@ const fs = require('fs');
 const path = require('path');
 const xlsx = require('xlsx');
 
+function formatReturnPeriod(val) {
+    if (!val) return val;
+    const str = String(val).trim();
+    // Match MM/YYYY or MM-YYYY
+    const match = str.match(/^(\d{1,2})[/-](\d{4})$/);
+    if (match) {
+        const monthNum = parseInt(match[1], 10);
+        const yearStr = match[2];
+        const monthsAbbr = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        if (monthNum >= 1 && monthNum <= 12) {
+            const monthAbbr = monthsAbbr[monthNum - 1];
+            const shortYear = yearStr.substring(2);
+            return `${monthAbbr}-${shortYear}`;
+        }
+    }
+    return val;
+}
+
 /**
  * Traverses the source directory to find all client and state subdirectories,
  * and consolidates all rejected notes files per state into a single Excel report.
@@ -99,6 +117,8 @@ async function consolidateReports(sourceDir, logCallback = console.log) {
                                 ? String(rows[headerIdx - 1][0]).trim() 
                                 : path.basename(file, path.extname(file));
                             const headers = rows[headerIdx] || [];
+                            const noteDateIdx = headers.findIndex(h => h && String(h).trim().toLowerCase() === 'note date');
+                            const returnPeriodIdx = headers.findIndex(h => h && String(h).trim().toLowerCase() === 'return period');
                             
                             // Try to extract GSTIN/username from title or data rows
                             if (rawTitle && rawTitle.includes('GSTIN')) {
@@ -114,6 +134,20 @@ async function consolidateReports(sourceDir, logCallback = console.log) {
                                 if (!row || row.length <= 1) continue;
                                 // Ignore row if it's a copy of headers
                                 if (row.some(c => c && String(c).includes('Recipient GSTIN'))) continue;
+
+                                // Format Note Date: replace '/' with '-'
+                                if (noteDateIdx !== -1 && row[noteDateIdx] !== undefined) {
+                                    const rawDate = String(row[noteDateIdx]).trim();
+                                    if (rawDate.includes('/')) {
+                                        row[noteDateIdx] = rawDate.replace(/\//g, '-');
+                                    }
+                                }
+
+                                // Format Return Period: e.g. 12/2025 -> Dec-25
+                                if (returnPeriodIdx !== -1 && row[returnPeriodIdx] !== undefined) {
+                                    row[returnPeriodIdx] = formatReturnPeriod(row[returnPeriodIdx]);
+                                }
+
                                 dataRows.push(row);
                             }
 
@@ -154,7 +188,8 @@ async function consolidateReports(sourceDir, logCallback = console.log) {
                     ];
 
                     const consolidatedWs = xlsx.utils.aoa_to_sheet(formattedRows);
-                    xlsx.utils.book_append_sheet(consolidatedWb, consolidatedWs, sectionName.substring(0, 31));
+                    const cleanSheetName = sectionName.replace(/[:\\/?*\[\]]/g, ' ').substring(0, 31).trim();
+                    xlsx.utils.book_append_sheet(consolidatedWb, consolidatedWs, cleanSheetName);
                 }
 
                 // Ensure Consolidated folder exists inside the State folder
