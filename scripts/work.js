@@ -103,6 +103,9 @@ async function doGstWork(page, selections, downloadFolder, client) {
         for (const currentPeriod of targetPeriodsQueue) {
             let monthDownloaded = false;
             let monthError = null;
+            let isZipPending = false;
+            let zipReadyAt = 0;
+            let pendingSection = '';
             const successfulDownloads = [];
 
             try {
@@ -208,6 +211,10 @@ async function doGstWork(page, selections, downloadFolder, client) {
                                     section: headingText,
                                     records: String(result.rejectedCount)
                                 });
+                            } else if (result && result.pending) {
+                                isZipPending = true;
+                                zipReadyAt = result.readyAt;
+                                pendingSection = headingText;
                             }
 
                             // Try to click back button or go back
@@ -328,6 +335,9 @@ async function doGstWork(page, selections, downloadFolder, client) {
                     month: currentPeriod.returnPeriod,
                     isMonthChecked: true,
                     isDownloaded: monthDownloaded,
+                    isZipPending: isZipPending,
+                    zipReadyAt: zipReadyAt,
+                    pendingSection: pendingSection,
                     downloads: successfulDownloads,
                     error: monthError
                 });

@@ -134,10 +134,12 @@ async function loadClientsExcel(filePath) {
         currentExcelFilePath = result.filePath;
         
         const skipChecked = chkSkipExisting.checked;
-        loadedClients = result.clients.map(c => ({
-            ...c,
-            selected: skipChecked && c.status === 'success' ? false : true
-        }));
+        loadedClients = result.clients.map(c => {
+            return {
+                ...c,
+                selected: skipChecked && c.status === 'success' ? false : true
+            };
+        });
         
         appendConsoleLine(`System: Successfully loaded ${loadedClients.length} clients from Excel file.`, 'success');
         renderClientsList();
@@ -225,6 +227,14 @@ function renderClientsList() {
         else if (client.status === 'running') badge.textContent = 'Running';
         else if (client.status === 'success') badge.textContent = 'Success';
         else if (client.status === 'failed') badge.textContent = 'Failed';
+        else if (client.status === 'zip_pending') {
+            badge.className = 'badge badge-warning';
+            badge.textContent = 'Zip Pending';
+        }
+        else if (client.status === 'zip_ready') {
+            badge.className = 'badge badge-success';
+            badge.textContent = 'zips is ready to download';
+        }
         
         statusCell.appendChild(badge);
 
@@ -276,15 +286,23 @@ function setRunningState(running) {
     btnBrowseOutput.disabled = running;
     chkSelectAll.disabled = running;
     chkSkipExisting.disabled = running;
+    const chkOnlyReadyZips = document.getElementById('chk-only-ready-zips');
+    if (chkOnlyReadyZips) chkOnlyReadyZips.disabled = running;
 
     btnRunAutomation.disabled = running;
     btnStopAutomation.disabled = !running;
 }
 
 async function startAutomation() {
-    const clientsToRun = loadedClients.filter(c => c.selected !== false);
+    let clientsToRun = loadedClients.filter(c => c.selected !== false);
+    
+    const onlyReadyZips = document.getElementById('chk-only-ready-zips').checked;
+    if (onlyReadyZips) {
+        clientsToRun = clientsToRun.filter(c => c.status === 'zip_ready');
+    }
+
     if (clientsToRun.length === 0) {
-        alert('Please select at least one client to run.');
+        alert(onlyReadyZips ? 'No clients with ready zips to download.' : 'Please select at least one client to run.');
         return;
     }
 
@@ -357,6 +375,26 @@ function parseConsoleProgress(logText) {
             }
             updateStats();
         }
+    }
+
+    // Zip Pending Match: CLIENT_PROGRESS:ZIP_PENDING:username:month:readyAt:pendingSection
+    const zipPendingMatch = logText.match(/CLIENT_PROGRESS:ZIP_PENDING:([^:]+):([^:]+):([^:]+):(.+)/);
+    if (zipPendingMatch) {
+        const username = zipPendingMatch[1].trim();
+        const targetClient = loadedClients.find(c => c.username === username);
+        if (targetClient) {
+            targetClient.status = 'zip_pending';
+            const month = zipPendingMatch[2].trim();
+            const readyAt = zipPendingMatch[3].trim();
+            const pendingSection = zipPendingMatch[4].trim();
+            targetClient.excelStatus = `Zip Pending | ${month} | ${readyAt} | ${pendingSection}`;
+            const badge = document.getElementById(`badge-${username}`);
+            if (badge) {
+                badge.className = 'badge badge-warning';
+                badge.textContent = 'Zip Pending';
+            }
+            updateStats();
+        }
         return;
     }
 
@@ -367,6 +405,7 @@ function parseConsoleProgress(logText) {
         const targetClient = loadedClients.find(c => c.username === username);
         if (targetClient) {
             targetClient.status = 'success';
+            targetClient.excelStatus = 'Success';
             const badge = document.getElementById(`badge-${username}`);
             if (badge) {
                 badge.className = 'badge badge-success';
@@ -384,6 +423,7 @@ function parseConsoleProgress(logText) {
         const targetClient = loadedClients.find(c => c.username === username);
         if (targetClient) {
             targetClient.status = 'failed';
+            targetClient.excelStatus = 'Failed';
             const badge = document.getElementById(`badge-${username}`);
             if (badge) {
                 badge.className = 'badge badge-failed';
@@ -735,4 +775,66 @@ document.addEventListener('DOMContentLoaded', () => {
         consolidateConsoleOutput.appendChild(line);
         consolidateConsoleOutput.scrollTop = consolidateConsoleOutput.scrollHeight;
     }
+
+    function showNotification(client) {
+        if (!("Notification" in window)) return;
+        const title = 'GST Zip File Ready';
+        const options = {
+            body: `Zip file is ready to download for client: ${client.clientName || client.username}`,
+            requireInteraction: true
+        };
+        if (Notification.permission === 'granted') {
+            new Notification(title, options);
+        } else if (Notification.permission !== 'denied') {
+            Notification.requestPermission().then(permission => {
+                if (permission === 'granted') {
+                    new Notification(title, options);
+                }
+            });
+        }
+    }
+
+    // Request notification permission on startup
+    if (typeof Notification !== 'undefined' && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+        Notification.requestPermission();
+    }
+
+    // Start global countdown timer for zip pending statuses
+    setInterval(() => {
+        loadedClients.forEach(c => {
+            // If the client status is currently active, success, failed or pending, skip timer overwrite
+            if (c.status === 'running' || c.status === 'pending' || c.status === 'success' || c.status === 'failed') {
+                return;
+            }
+            
+            if (c.excelStatus && c.excelStatus.startsWith('Zip Pending')) {
+                const parts = c.excelStatus.split('|').map(s => s.trim());
+                if (parts.length >= 4) {
+                    const readyAt = parseInt(parts[2], 10);
+                    const now = Date.now();
+                    
+                    const badge = document.getElementById(`badge-${c.username}`);
+                    if (now < readyAt) {
+                        c.status = 'zip_pending';
+                        if (badge) {
+                            const diffSeconds = Math.max(0, Math.floor((readyAt - now) / 1000));
+                            const mins = Math.floor(diffSeconds / 60);
+                            const secs = diffSeconds % 60;
+                            badge.className = 'badge badge-warning';
+                            badge.textContent = `Zip Pending (${mins}:${secs.toString().padStart(2, '0')})`;
+                        }
+                    } else {
+                        if (c.status === 'zip_pending') {
+                            showNotification(c);
+                        }
+                        c.status = 'zip_ready';
+                        if (badge) {
+                            badge.className = 'badge badge-success';
+                            badge.textContent = 'zips is ready to download';
+                        }
+                    }
+                }
+            }
+        });
+    }, 1000);
 });

@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const { fillImsForm } = require('./formHandler');
 
 async function retry(fn, retries = 2, delay = 1000) {
     for (let i = 0; i < retries; i++) {
@@ -13,55 +14,99 @@ async function retry(fn, retries = 2, delay = 1000) {
 }
 
 /**
- * Skeleton handler for processing and downloading when record count is greater than 500.
- * @param {import('playwright').Page} page - The active Playwright page instance
- * @param {string} downloadFolder - The root download directory
- * @param {object} client - The active client configuration containing metadata
- * @param {string} month - The targeted lookback month string name
- * @returns {Promise<boolean>}
+ * Direct download handler for pre-generated zip files.
+ * Navigates straight to the pending category details page and triggers the second download link.
  */
-async function processLargeCountRejectedInvoices(page, downloadFolder, client, month) {
+async function downloadPendingZip(page, selections, downloadFolder, client, pendingInfo) {
     const { clientName, stateName } = client;
+    const month = pendingInfo.month;
+
+    console.log(`Starting direct download workflow for pending zip: ${clientName} (${stateName}), month: ${month}`);
 
     try {
-        // 1. Locate and click the first "Download" link for large datasets (> 500 records)
-        const firstDownloadLink = page.locator('a[data-ng-click*="dnldAdvSearchSumOut"], p a:has-text("Download")').first();
+        // --- 1. POPUP HANDLER SECTION ---
+        const popupButton = page.locator('button, a, input, [role="button"], div, span', { hasText: /remind me later/i }).first();
+        try {
+            await popupButton.waitFor({ state: 'visible', timeout: 8000 });
+            await popupButton.click();
+            await page.waitForTimeout(2000);
+        } catch (popupErr) {}
+
+        // --- 2. NAVIGATE TO IMS DASHBOARD ---
+        const imsSelector = 'a[href="//return.gst.gov.in/imsweb/auth/imsDashboard"]';
         await retry(async () => {
-            await firstDownloadLink.waitFor({ state: 'visible', timeout: 15000 });
-            await firstDownloadLink.click();
+            await page.waitForSelector(imsSelector, { state: 'attached', timeout: 15000 });
+            await page.evaluate((selector) => {
+                const element = document.querySelector(selector);
+                if (element) element.click();
+            }, imsSelector);
+            await page.waitForLoadState('networkidle');
         });
 
-        // 2. Locate the generated zip file link and the alert banner
+        // --- 3. SELECT OUTWARD SUPPLIES VIEW ---
+        await retry(async () => {
+            const viewButton = page.locator('button[data-ng-click*="outwardsupplies"]').first();
+            await viewButton.waitFor({ state: 'visible', timeout: 10000 });
+            await viewButton.click();
+            await page.waitForLoadState('networkidle');
+        });
+
+        // --- 4. FILL IMS FORM FOR PENDING MONTH ---
+        const formPeriod = {
+            financialYear: pendingInfo.financialYear || (selections && selections.financialYear) || '2025-26',
+            returnPeriod: month,
+            returnType: pendingInfo.returnType || (selections && selections.returnType) || 'GSTR-1/IFF'
+        };
+        await retry(async () => {
+            await fillImsForm(page, formPeriod);
+        });
+
+        // Wait for summary loading spinner to hide completely
+        const spinner = page.locator('.loading, .loading-backdrop, #loading, .spinner, .ajax-loader').first();
+        for (let i = 0; i < 10; i++) {
+            if (await spinner.isVisible()) {
+                await spinner.waitFor({ state: 'hidden', timeout: 8000 }).catch(() => { });
+            }
+            await page.waitForTimeout(300);
+        }
+        await page.waitForTimeout(1500);
+
+        // --- 5. NAVIGATE INTO THE DETAILS ROW ---
+        const tableRowsSelector = 'table.table-responsive tbody tr';
+        await page.waitForSelector(tableRowsSelector, { state: 'visible', timeout: 10000 });
+
+        // Locate row based on section name
+        const pendingSectionText = pendingInfo.pendingSection;
+        let rowLink = null;
+
+        // Try to match exact heading text inside the rows
+        const rowCount = await page.locator(tableRowsSelector).count();
+        for (let r = 0; r < rowCount; r++) {
+            const rowLoc = page.locator(tableRowsSelector).nth(r);
+            const headingText = (await rowLoc.locator('td:nth-child(2)').innerText()).trim().replace(/\n/g, ' ');
+            
+            // Check if this row heading contains our target section name
+            if (headingText.toLowerCase().includes(pendingSectionText.toLowerCase()) || pendingSectionText.toLowerCase().includes(headingText.toLowerCase())) {
+                rowLink = rowLoc.locator('td:nth-child(2) a');
+                break;
+            }
+        }
+
+        if (!rowLink || (await rowLink.count()) === 0) {
+            throw new Error(`Could not find summary row link for section: "${pendingSectionText}"`);
+        }
+
+        await retry(async () => {
+            await rowLink.click();
+            await page.waitForLoadState('networkidle');
+        });
+
+        // --- 6. TRIGGER THE PRE-GENERATED DOWNLOAD LINK ---
         const secondDownloadLink = page.locator('span[data-ng-if="advSearchDnld"] a, a:has-text("Click here to")').first();
-        const generationAlert = page.locator('.alert-success', { hasText: /request for file generation has been accepted|File generation is in progress/i }).first();
-
-        // Wait up to 10 seconds for either the download link or the generation pending alert to appear
-        let isAlertVisible = false;
-        let isLinkVisible = false;
-        
-        for (let i = 0; i < 20; i++) {
-            if (await generationAlert.isVisible()) {
-                isAlertVisible = true;
-                break;
-            }
-            if (await secondDownloadLink.isVisible()) {
-                isLinkVisible = true;
-                break;
-            }
-            await page.waitForTimeout(500);
-        }
-
-        if (isAlertVisible) {
-            console.log(`⚠️ Zip file generation request accepted / in progress. Revisit in 20 minutes.`);
-            return { success: false, pending: true, readyAt: Date.now() + 20 * 60 * 1000 };
-        }
-
-        // Wait up to 30 seconds for the download link to generate and become visible
         await retry(async () => {
-            await secondDownloadLink.waitFor({ state: 'visible', timeout: 30000 });
+            await secondDownloadLink.waitFor({ state: 'visible', timeout: 15000 });
         });
 
-        // 3. Intercept download event and click the second download link
         const download = await retry(async () => {
             const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
             await secondDownloadLink.click();
@@ -80,13 +125,13 @@ async function processLargeCountRejectedInvoices(page, downloadFolder, client, m
             await download.saveAs(finalSavePath);
 
             let totalRejectedCount = 0;
-            // Automatically extract/unzip the file using PowerShell on Windows
+            // Extract / unzip the file
             try {
                 const { execSync } = require('child_process');
                 const cmd = `powershell -Command "Expand-Archive -Path \\"${finalSavePath}\\" -DestinationPath \\"${targetNestedDirectory}\\" -Force"`;
                 execSync(cmd);
 
-                // Read and process the extracted excel files to filter for "Rejected" records
+                // Filter Excel files
                 const xlsx = require('xlsx');
                 const files = fs.readdirSync(targetNestedDirectory);
                 
@@ -96,7 +141,6 @@ async function processLargeCountRejectedInvoices(page, downloadFolder, client, m
                         const workbook = xlsx.readFile(filePath);
                         const sheet = workbook.Sheets[workbook.SheetNames[0]];
                         
-                        // Dynamically calculate the actual row count to fix the incorrect !ref range
                         let maxRow = 0;
                         const cellKeys = Object.keys(sheet).filter(k => /^[A-Z]+\d+$/.test(k));
                         for (const key of cellKeys) {
@@ -139,7 +183,6 @@ async function processLargeCountRejectedInvoices(page, downloadFolder, client, m
 
                             totalRejectedCount += filteredRows.length;
 
-                            // Overwrite output XLSX file with filtered records, preserving headings
                             if (filteredRows.length > 0) {
                                 const outputRows = [
                                     [title],
@@ -155,34 +198,30 @@ async function processLargeCountRejectedInvoices(page, downloadFolder, client, m
                                 xlsx.utils.book_append_sheet(newWb, newSheet, workbook.SheetNames[0]);
                                 xlsx.writeFile(newWb, filePath);
                             } else {
-                                // Clean up the .xlsx file if no rejected records exist
                                 try {
                                     fs.unlinkSync(filePath);
                                 } catch (e) {}
                             }
                         } else {
-                            // Clean up invalid/empty files
                             try {
                                 fs.unlinkSync(filePath);
                             } catch (e) {}
                         }
                     }
                 }
-
-                // Clean up the .zip file - Commented out for testing/verification purposes
-                // fs.unlinkSync(finalSavePath);
             } catch (zipErr) {
                 console.error("❌ Failed to process and extract ZIP archive:", zipErr.message || zipErr);
             }
 
+            console.log(`✅ Direct download complete. Rejected count: ${totalRejectedCount}`);
             return { success: true, rejectedCount: totalRejectedCount };
         }
 
-        return { success: false, rejectedCount: 0 };
-    } catch (error) {
-        console.error("❌ An error occurred inside large count sub-work routine:", error);
-        return { success: false, rejectedCount: 0 };
+        return { success: false };
+    } catch (err) {
+        console.error("❌ Error during direct zip download exception:", err.message || err);
+        return { success: false, error: err.message || String(err) };
     }
 }
 
-module.exports = { processLargeCountRejectedInvoices };
+module.exports = { downloadPendingZip };

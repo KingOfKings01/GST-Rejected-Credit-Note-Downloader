@@ -99,20 +99,22 @@ ipcMain.handle('parse-excel', async (event, customFilePath) => {
 
         const workbook = xlsx.readFile(filePath);
         const sheetName = 'customer data and filing return';
-        
+
         if (!workbook.SheetNames.includes(sheetName)) {
             throw new Error(`Sheet "${sheetName}" not found in Excel file. Available sheets: ${workbook.SheetNames.join(', ')}`);
         }
 
         const sheet = workbook.Sheets[sheetName];
         const rawData = xlsx.utils.sheet_to_json(sheet);
-        
+
         // Map raw row fields to normalized client objects
         const clients = rawData.map(row => {
             const excelStatus = (row['STATUS'] || '').toString().trim();
             let status = 'pending';
             if (excelStatus.toLowerCase() === 'success') {
                 status = 'success';
+            } else if (excelStatus.startsWith('Zip Pending')) {
+                status = 'zip_pending';
             } else if (excelStatus.toLowerCase().startsWith('failed') || excelStatus.length > 0) {
                 status = 'failed';
             }
@@ -166,7 +168,7 @@ ipcMain.on('start-automation', (event, config) => {
         if (scriptPath.includes('app.asar') && !scriptPath.includes('app.asar.unpacked')) {
             scriptPath = scriptPath.replace('app.asar', 'app.asar.unpacked');
         }
-        
+
         console.log(`Spawning child process for script: ${scriptPath}`);
         activeChildProcess = spawn('node', [scriptPath, tempConfigPath], {
             cwd: path.dirname(scriptPath)
