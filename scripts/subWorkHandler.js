@@ -1,6 +1,17 @@
 const path = require('path');
 const fs = require('fs'); // CRITICAL: Added File System module to build folders
 
+async function retry(fn, retries = 2, delay = 1000) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await fn();
+        } catch (e) {
+            if (i === retries - 1) throw e;
+            await new Promise(r => setTimeout(r, delay));
+        }
+    }
+}
+
 /**
  * Handles the actions inside a specific invoice category drill-down view.
  * Opens the filter pane, selects 'Rejected', applies the filter, and downloads the Excel report if data exists.
@@ -16,27 +27,29 @@ async function processRejectedInvoices(page, downloadFolder, client, month) {
     try {
         // 1. Locate and click the "Filter" button
         const filterButton = page.locator('button#showbutton');
-        await filterButton.waitFor({ state: 'visible', timeout: 10000 });
-
-        await filterButton.click();
+        await retry(async () => {
+            await filterButton.waitFor({ state: 'visible', timeout: 10000 });
+            await filterButton.click();
+        });
         await page.waitForTimeout(1500);
 
         // 2. Locate the precise "Status" dropdown form element
         const statusDropdown = page.locator('select[ng-model="status"]');
-        await statusDropdown.waitFor({ state: 'visible', timeout: 10000 });
-
-        await statusDropdown.click();
-        await page.waitForTimeout(500);
-
-        await statusDropdown.selectOption({ value: 'Rejected', label: 'Rejected' });
-
-        await statusDropdown.dispatchEvent('change');
+        await retry(async () => {
+            await statusDropdown.waitFor({ state: 'visible', timeout: 10000 });
+            await statusDropdown.click();
+            await page.waitForTimeout(500);
+            await statusDropdown.selectOption({ value: 'Rejected', label: 'Rejected' });
+            await statusDropdown.dispatchEvent('change');
+        });
         await page.waitForTimeout(500);
 
         // 3. Click the "Apply" button
         const applyButton = page.locator('button[ng-click*="suppfilterButton"]');
-        await applyButton.waitFor({ state: 'visible', timeout: 10000 });
-        await applyButton.click();
+        await retry(async () => {
+            await applyButton.waitFor({ state: 'visible', timeout: 10000 });
+            await applyButton.click();
+        });
 
         await page.waitForLoadState('networkidle');
         
@@ -79,14 +92,9 @@ async function processRejectedInvoices(page, downloadFolder, client, month) {
                 await page.waitForTimeout(500);
             }
 
-            if (!isDataPresent) {
-                console.log(`⚠️ [Alert Detected]: 'No record found' or download unavailable for ${clientName} (${month}). Skipping download.`);
-            } else {
-                console.log("📊 Data table is present! Preparing to download Excel report...");
-
+            if (isDataPresent) {
                 // Set up a promise listener with a 15-second timeout to intercept the browser file stream download event
                 const downloadPromise = page.waitForEvent('download', { timeout: 15000 }).catch((e) => {
-                    console.log(`⚠️ Download event did not trigger or timed out: ${e.message || e}`);
                     return null;
                 });
 

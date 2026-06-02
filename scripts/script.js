@@ -133,44 +133,34 @@ async function run() {
         }
     }
 
-    // Create a single context/page for the entire run. viewport: null ensures browser scales to window size.
-    const context = await browser.newContext({
-        viewport: null
-    });
-    const page = await context.newPage();
-    
     for (let i = 0; i < clients.length; i++) {
         const client = clients[i];
-        console.log(`CLIENT_PROGRESS:START:${i+1}:${clients.length}:${client.clientName || client.username}`);
+        console.log(`CLIENT_PROGRESS:START:${i+1}:${clients.length}:${client.username}:${client.clientName || client.username}`);
+
+        // Create a new context and page for EACH client to ensure absolute clean session isolation
+        const context = await browser.newContext({
+            viewport: null
+        });
+        const page = await context.newPage();
 
         try {
-            // Clear cookies and site data to log out the previous client and start fresh
-            await context.clearCookies();
-            try {
-                await page.goto('about:blank');
-
-                await page.evaluate(() => {
-                    localStorage.clear();
-                    sessionStorage.clear();
-                });
-            } catch (storageErr) {
-                // Ignore any initial blank page state evaluation errors
-            }
-
             // 1. Run the login process using the active page
-            const isLoginSuccessful = await loginGST(page, client.username, client.password);
+            const browserZoom = (selections && selections.browserZoom) || '0.85';
+            const isLoginSuccessful = await loginGST(page, client.username, client.password, browserZoom);
 
-            // 2. If login failed, skip to the next
-            if (!isLoginSuccessful) {
-                console.log(`CLIENT_PROGRESS:FAILED:${client.username}: Login unsuccessful.`);
-                updateExcelClientStatus(excelFilePath, client.username, 'Failed: Login unsuccessful');
+            // 2. If login failed or skipped, handle appropriately
+            if (!isLoginSuccessful || isLoginSuccessful === 'skipped') {
+                const isSkipped = isLoginSuccessful === 'skipped';
+                const statusText = isSkipped ? 'Skipped by user' : 'Failed: Login unsuccessful';
+                console.log(`CLIENT_PROGRESS:FAILED:${client.username}: ${statusText}`);
+                updateExcelClientStatus(excelFilePath, client.username, statusText);
                 allReportRows.push({
                     'Client Name': client.clientName || client.clientState || 'Unknown',
                     'State': client.stateName || 'N/A',
                     'GST Number': client.gstNo || 'N/A',
                     'Username': client.username,
-                    [selections ? selections.returnPeriod : 'Selected Month']: 'Login Failed',
-                    'Error if Present': 'Login unsuccessful',
+                    [selections ? selections.returnPeriod : 'Selected Month']: isSkipped ? 'Skipped' : 'Login Failed',
+                    'Error if Present': statusText,
                     'Timestamp': new Date().toLocaleString()
                 });
                 continue;
@@ -232,13 +222,17 @@ async function run() {
                 'Error if Present': errStr,
                 'Timestamp': new Date().toLocaleString()
             });
+        } finally {
+            try {
+                await page.close();
+            } catch (e) {}
+            try {
+                await context.close();
+            } catch (e) {}
         }
     }
 
     // --- FINAL WORKFLOW TEARDOWN ---
-    try {
-        await context.close();
-    } catch (e) {}
     await browser.close();
 
     // Generate Final Excel Report

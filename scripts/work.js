@@ -2,6 +2,17 @@ const { fillImsForm } = require('./formHandler');
 const { processRejectedInvoices } = require('./subWorkHandler');
 const { processLargeCountRejectedInvoices } = require('./largeCountSubWork');
 
+async function retry(fn, retries = 2, delay = 1000) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await fn();
+        } catch (e) {
+            if (i === retries - 1) throw e;
+            await new Promise(r => setTimeout(r, delay));
+        }
+    }
+}
+
 // Localized, sequential array of the Indian Fiscal Year months structure
 const FISCAL_MONTHS = [
     "April", "May", "June", "July", "August", "September",
@@ -33,16 +44,19 @@ function decrementFinancialYear(finYearStr) {
 
 async function doGstWork(page, selections, downloadFolder, client) {
     console.log("Starting post-login workflow operations...");
+    let currentStage = 'Popup Handling';
 
     try {
         // --- 1. POPUP HANDLER SECTION ---
-        const popupButton = page.locator('button, a', { hasText: /remind me later/i });
+        const popupButton = page.locator('button, a, input, [role="button"], div, span', { hasText: /remind me later/i }).first();
 
         try {
-            await popupButton.waitFor({ state: 'visible', timeout: 3000 });
+            // The popup might take a few seconds to load on slower connections
+            await popupButton.waitFor({ state: 'visible', timeout: 8000 });
             await popupButton.click();
-            await page.waitForTimeout(3000);
+            await page.waitForTimeout(2000);
         } catch (popupErr) {
+            // If no popup appears within the timeout, we proceed
         }
 
         // --- 2. BASELINE INPUT CONFIGURATION ---
@@ -92,22 +106,29 @@ async function doGstWork(page, selections, downloadFolder, client) {
             const successfulDownloads = [];
 
             try {
+                currentStage = 'Navigating to IMS Dashboard';
                 const imsSelector = 'a[href="//return.gst.gov.in/imsweb/auth/imsDashboard"]';
-                await page.waitForSelector(imsSelector, { state: 'attached', timeout: 15000 });
-                await page.evaluate((selector) => {
-                    const element = document.querySelector(selector);
-                    if (element) element.click();
-                }, imsSelector);
+                await retry(async () => {
+                    await page.waitForSelector(imsSelector, { state: 'attached', timeout: 15000 });
+                    await page.evaluate((selector) => {
+                        const element = document.querySelector(selector);
+                        if (element) element.click();
+                    }, imsSelector);
+                    await page.waitForLoadState('networkidle');
+                });
 
-                await page.waitForLoadState('networkidle');
+                currentStage = 'Selecting Outward Supplies View';
+                await retry(async () => {
+                    const viewButton = page.locator('button[data-ng-click*="outwardsupplies"]').first();
+                    await viewButton.waitFor({ state: 'visible', timeout: 10000 });
+                    await viewButton.click();
+                    await page.waitForLoadState('networkidle');
+                });
 
-                const viewButton = page.locator('button[data-ng-click*="outwardsupplies"]').first();
-                await viewButton.waitFor({ state: 'visible', timeout: 10000 });
-                await viewButton.click();
-
-                await page.waitForLoadState('networkidle');
-
-                await fillImsForm(page, currentPeriod);
+                currentStage = `Filing IMS Form details for ${currentPeriod.returnPeriod}`;
+                await retry(async () => {
+                    await fillImsForm(page, currentPeriod);
+                });
 
                 // Wait for summary loading spinner to hide completely
                 const spinner = page.locator('.loading, .loading-backdrop, #loading, .spinner, .ajax-loader').first();
@@ -119,8 +140,11 @@ async function doGstWork(page, selections, downloadFolder, client) {
                 }
                 await page.waitForTimeout(1000); // Increased stable rendering timeout
 
+                currentStage = 'Loading Summary Table';
                 const tableRowsSelector = 'table.table-responsive tbody tr';
-                await page.waitForSelector(tableRowsSelector, { state: 'visible', timeout: 10000 });
+                await retry(async () => {
+                    await page.waitForSelector(tableRowsSelector, { state: 'visible', timeout: 10000 });
+                });
 
                 const totalRowsToProcess = 6;
 
@@ -152,6 +176,7 @@ async function doGstWork(page, selections, downloadFolder, client) {
                 await page.waitForTimeout(1000);
 
                 for (let srNo = 1; srNo <= totalRowsToProcess; srNo++) {
+                    currentStage = `Processing Summary Row ${srNo}`;
                     const currentRow = page.locator(tableRowsSelector, { has: page.locator(`td.sno-col:text-is("${srNo}")`) });
                     await currentRow.waitFor({ state: 'attached', timeout: 5000 });
 
@@ -169,10 +194,13 @@ async function doGstWork(page, selections, downloadFolder, client) {
                     // Check if there is a clickable link inside the heading column
                     const recordLink = currentRow.locator('td:nth-child(2) a');
                     if (await recordLink.count() > 0) {
-                        await recordLink.click();
-                        await page.waitForLoadState('networkidle');
+                        await retry(async () => {
+                            await recordLink.click();
+                            await page.waitForLoadState('networkidle');
+                        });
 
                         if (count > 500) {
+                            currentStage = `Downloading large count rejected invoices for Row ${srNo} (${headingText})`;
                             const result = await processLargeCountRejectedInvoices(page, downloadFolder, client, currentPeriod.returnPeriod);
                             if (result && result.success) {
                                 monthDownloaded = true;
@@ -213,6 +241,7 @@ async function doGstWork(page, selections, downloadFolder, client) {
                             }
 
                             if (enteredDetail) {
+                                currentStage = `Downloading rejected invoices for Row ${srNo} (${headingText})`;
                                 // subWorkHandler checks for records and downloads
                                 const downloaded = await processRejectedInvoices(page, downloadFolder, client, currentPeriod.returnPeriod);
                                 if (downloaded) {
@@ -252,8 +281,14 @@ async function doGstWork(page, selections, downloadFolder, client) {
                 }
 
             } catch (err) {
-                console.error(`Error processing period ${currentPeriod.returnPeriod}:`, err.message || err);
-                monthError = err.message || String(err);
+                let errMsg = err.message || String(err);
+                if (errMsg.toLowerCase().includes('timeout')) {
+                    errMsg = `Session Timeout / Page Load Timeout during stage: "${currentStage}"`;
+                } else {
+                    errMsg = `Error during stage "${currentStage}": ${errMsg}`;
+                }
+                console.error(`Error processing period ${currentPeriod.returnPeriod}:`, errMsg);
+                monthError = errMsg;
             } finally {
                 try {
                     const dashboardHomeBtn = page.locator('a[href*="dashboard"], button[id*="home"]').first();
@@ -262,22 +297,26 @@ async function doGstWork(page, selections, downloadFolder, client) {
                         await page.waitForLoadState('networkidle');
                     } else {
                         await page.goto('https://services.gst.gov.in/services/auth/fowelcome');
-                        await page.evaluate(() => {
-                            document.body.style.transform = 'scale(0.75)';
+                        const browserZoom = (selections && selections.browserZoom) || '0.85';
+                        await page.evaluate((zoom) => {
+                            const scaleVal = parseFloat(zoom) || 0.85;
+                            document.body.style.transform = `scale(${scaleVal})`;
                             document.body.style.transformOrigin = 'top left'; // Keeps content aligned to the top-left
-                            document.body.style.width = '135%'; // Compenses for the scale down so layout doesn't break
-                        });
+                            document.body.style.width = `${(1 / scaleVal) * 100}%`; // Compenses for the scale down so layout doesn't break
+                        }, browserZoom);
 
                         await page.waitForLoadState('networkidle');
                     }
                 } catch (resetErr) {
                     try {
                         await page.goto('https://services.gst.gov.in/services/auth/fowelcome');
-                        await page.evaluate(() => {
-                            document.body.style.transform = 'scale(0.75)';
+                        const browserZoom = (selections && selections.browserZoom) || '0.85';
+                        await page.evaluate((zoom) => {
+                            const scaleVal = parseFloat(zoom) || 0.85;
+                            document.body.style.transform = `scale(${scaleVal})`;
                             document.body.style.transformOrigin = 'top left'; // Keeps content aligned to the top-left
-                            document.body.style.width = '135%'; // Compenses for the scale down so layout doesn't break
-                        });
+                            document.body.style.width = `${(1 / scaleVal) * 100}%`; // Compenses for the scale down so layout doesn't break
+                        }, browserZoom);
 
                         await page.waitForLoadState('networkidle');
                     } catch (e) {

@@ -1,6 +1,17 @@
 const path = require('path');
 const fs = require('fs');
 
+async function retry(fn, retries = 2, delay = 1000) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await fn();
+        } catch (e) {
+            if (i === retries - 1) throw e;
+            await new Promise(r => setTimeout(r, delay));
+        }
+    }
+}
+
 /**
  * Skeleton handler for processing and downloading when record count is greater than 500.
  * @param {import('playwright').Page} page - The active Playwright page instance
@@ -15,19 +26,25 @@ async function processLargeCountRejectedInvoices(page, downloadFolder, client, m
     try {
         // 1. Locate and click the first "Download" link for large datasets (> 500 records)
         const firstDownloadLink = page.locator('a[data-ng-click*="dnldAdvSearchSumOut"], p a:has-text("Download")').first();
-        await firstDownloadLink.waitFor({ state: 'visible', timeout: 15000 });
-        await firstDownloadLink.click();
+        await retry(async () => {
+            await firstDownloadLink.waitFor({ state: 'visible', timeout: 15000 });
+            await firstDownloadLink.click();
+        });
 
         // 2. Locate the generated zip file link (which appears after click/generation finishes)
         const secondDownloadLink = page.locator('span[data-ng-if="advSearchDnld"] a, a:has-text("Click here to")').first();
         
         // Wait up to 30 seconds for the download link to generate and become visible
-        await secondDownloadLink.waitFor({ state: 'visible', timeout: 30000 });
+        await retry(async () => {
+            await secondDownloadLink.waitFor({ state: 'visible', timeout: 30000 });
+        });
 
         // 3. Intercept download event and click the second download link
-        const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
-        await secondDownloadLink.click();
-        const download = await downloadPromise;
+        const download = await retry(async () => {
+            const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
+            await secondDownloadLink.click();
+            return await downloadPromise;
+        });
 
         if (download) {
             const suggestedFileName = download.suggestedFilename();
@@ -56,6 +73,25 @@ async function processLargeCountRejectedInvoices(page, downloadFolder, client, m
                         const filePath = path.join(targetNestedDirectory, file);
                         const workbook = xlsx.readFile(filePath);
                         const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                        
+                        // Dynamically calculate the actual row count to fix the incorrect !ref range
+                        let maxRow = 0;
+                        const cellKeys = Object.keys(sheet).filter(k => /^[A-Z]+\d+$/.test(k));
+                        for (const key of cellKeys) {
+                            const rowNum = parseInt(key.replace(/^[A-Z]+/, ''), 10);
+                            if (rowNum > maxRow) {
+                                maxRow = rowNum;
+                            }
+                        }
+                        if (maxRow > 0) {
+                            let colEnd = 'O';
+                            if (sheet['!ref']) {
+                                const rangeMatch = sheet['!ref'].match(/:([A-Z]+)\d+/);
+                                if (rangeMatch) colEnd = rangeMatch[1];
+                            }
+                            sheet['!ref'] = `A1:${colEnd}${maxRow}`;
+                        }
+
                         const rows = xlsx.utils.sheet_to_json(sheet, { header: 1 });
 
                         if (rows.length >= 5) {
@@ -81,30 +117,33 @@ async function processLargeCountRejectedInvoices(page, downloadFolder, client, m
 
                             totalRejectedCount += filteredRows.length;
 
-                            // Format and write output CSV file only if there are rejected records
+                            // Overwrite output XLSX file with filtered records, preserving headings
                             if (filteredRows.length > 0) {
-                                const csvContent = [
-                                    title,
-                                    section,
-                                    headers.join(','),
-                                    ...filteredRows.map(row => row.map(val => {
-                                        if (val === undefined || val === null) return '';
-                                        const str = String(val);
-                                        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-                                            return `"${str.replace(/"/g, '""')}"`;
-                                        }
-                                        return str;
-                                    }).join(','))
-                                ].join('\n') + '\n';
-
-                                const csvPath = filePath.replace(/\.xlsx$/, '.csv');
-                                fs.writeFileSync(csvPath, csvContent, 'utf8');
+                                const outputRows = [
+                                    [title],
+                                    [],
+                                    [],
+                                    [section],
+                                    headers,
+                                    [],
+                                    ...filteredRows
+                                ];
+                                const newSheet = xlsx.utils.aoa_to_sheet(outputRows);
+                                const newWb = xlsx.utils.book_new();
+                                xlsx.utils.book_append_sheet(newWb, newSheet, workbook.SheetNames[0]);
+                                xlsx.writeFile(newWb, filePath);
+                            } else {
+                                // Clean up the .xlsx file if no rejected records exist
+                                try {
+                                    fs.unlinkSync(filePath);
+                                } catch (e) {}
                             }
-
+                        } else {
+                            // Clean up invalid/empty files
+                            try {
+                                fs.unlinkSync(filePath);
+                            } catch (e) {}
                         }
-
-                        // Clean up the .xlsx file
-                        fs.unlinkSync(filePath);
                     }
                 }
 

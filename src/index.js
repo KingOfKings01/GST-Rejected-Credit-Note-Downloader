@@ -1,3 +1,6 @@
+// Developer Configuration
+const BYPASS_AUTH = true; // Set to true to disable authentication overlay during development
+
 // State management
 let loadedClients = [];
 let isRunning = false;
@@ -330,13 +333,13 @@ function stopAutomation() {
 
 // 7. Parse Progress Tags from Console Output
 function parseConsoleProgress(logText) {
-    // Look for client progress markers
-    // Format: CLIENT_PROGRESS:START:current:total:clientName
-    const startMatch = logText.match(/CLIENT_PROGRESS:START:(\d+):(\d+):(.+)/);
+    // Format: CLIENT_PROGRESS:START:current:total:username:clientName
+    const startMatch = logText.match(/CLIENT_PROGRESS:START:(\d+):(\d+):([^:]+):(.+)/);
     if (startMatch) {
         const current = parseInt(startMatch[1], 10);
         const total = parseInt(startMatch[2], 10);
-        const clientName = startMatch[3];
+        const username = startMatch[3].trim();
+        const clientName = startMatch[4].trim();
         
         progressText.textContent = `Processing (${current}/${total}): ${clientName}`;
         const pct = Math.round(((current - 1) / total) * 100);
@@ -344,7 +347,7 @@ function parseConsoleProgress(logText) {
         progressPercentage.textContent = `${pct}%`;
 
         // Update target client status inside memory & DOM
-        const targetClient = loadedClients.find(c => (c.clientName === clientName || c.clientState === clientName || c.username === clientName));
+        const targetClient = loadedClients.find(c => c.username === username);
         if (targetClient) {
             targetClient.status = 'running';
             const badge = document.getElementById(`badge-${targetClient.username}`);
@@ -534,7 +537,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let targetEmail = '';
 
     // Always show auth panel on startup
-    showAuthPanel();
+    if (BYPASS_AUTH) {
+        document.getElementById('user-display-email').textContent = 'Developer Mode';
+        showAppContent();
+    } else {
+        showAuthPanel();
+    }
 
     authForm.addEventListener('submit', async (e) => {
         e.preventDefault();
