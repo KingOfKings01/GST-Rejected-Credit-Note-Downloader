@@ -1,102 +1,57 @@
 {
-
   "name": "my-electron-app",
-
-  "version": "1.0.0",
-
+  "version": "1.2.0",
   "description": "Desktop Web Scraper",
-
   "main": "main.js",
-
   "scripts": {
-
     "start": "electron .",
-
     "build": "electron-builder --win",
-
     "postbuild": "node -e \"const fs=require('fs'); ['dist/win-unpacked', 'dist/builder-debug.yml', 'dist/builder-effective-config.yaml'].forEach(p => { if(fs.existsSync(p)) fs.rmSync(p, {recursive:true, force:true}) })\""
-
   },
-
   "keywords": [],
-
   "author": "asif",
-
   "license": "ISC",
-
   "dependencies": {
-
     "chrome-paths": "^1.0.1",
-
-    "playwright": "^1.60.0",
-
     "playwright-core": "^1.49.0",
-
     "xlsx": "^0.18.5"
-
   },
-
   "devDependencies": {
-
     "electron": "^33.4.11",
-
     "electron-builder": "^24.13.3"
-
   },
-
   "build": {
-
     "appId": "com.asif.scraper",
-
-    "productName": "GST Scraper",
-
+    "productName": "GST Rejected Credit Note Downloader",
     "directories": {
-
       "output": "dist"
-
     },
-
     "win": {
-
       "target": [
-
-        "portable"
-
+        "nsis"
       ]
-
     },
-
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "runAfterFinish": true
+    },
     "files": [
-
       "main.js",
-
       "preload.js",
-
       "scrape_gst_*.js",
-
       "gst_*_data.json",
-
       "embeddings.json",
-
       "scripts/**/*",
-
       "src/**/*",
-
-      "node_modules/**/*"
-
+      "node_modules/**/*",
+      "!dist/**/*"
     ],
-
     "asar": true,
-
     "asarUnpack": [
-
       "scripts/**/*",
-
       "node_modules/**/*"
-
     ]
-
   }
-
 }
-

@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { chromium } = require('playwright'); // Imported chromium here to manage its lifecycle
+const { chromium } = require('playwright-core'); // Imported chromium here to manage its lifecycle from playwright-core
 const xlsx = require('xlsx');
 const { loginGST } = require('./login');
 const { doGstWork } = require('./work');
