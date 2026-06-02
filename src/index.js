@@ -8,7 +8,8 @@ let currentExcelFilePath = '';
 
 // DOM Elements
 const selectFy = document.getElementById('select-fy');
-const selectPeriod = document.getElementById('select-period');
+const selectPeriodFrom = document.getElementById('select-period-from');
+const selectPeriodTo = document.getElementById('select-period-to');
 const selectType = document.getElementById('select-type');
 const btnBrowseOutput = document.getElementById('btn-browse-output');
 const outputPathDisplay = document.getElementById('output-path-display');
@@ -60,6 +61,18 @@ function initializeDateOptions() {
 
     // Populate months when FY changes or initially
     selectFy.addEventListener('change', populateReturnPeriods);
+    
+    selectPeriodFrom.addEventListener('change', () => {
+        if (selectPeriodFrom.selectedIndex > selectPeriodTo.selectedIndex) {
+            selectPeriodTo.selectedIndex = selectPeriodFrom.selectedIndex;
+        }
+    });
+    selectPeriodTo.addEventListener('change', () => {
+        if (selectPeriodFrom.selectedIndex > selectPeriodTo.selectedIndex) {
+            selectPeriodFrom.selectedIndex = selectPeriodTo.selectedIndex;
+        }
+    });
+
     populateReturnPeriods();
 }
 
@@ -101,22 +114,29 @@ function populateReturnPeriods() {
         return true;
     });
 
-    // Populate Period Dropdown
-    selectPeriod.innerHTML = '';
+    // Populate Period Dropdowns
+    selectPeriodFrom.innerHTML = '';
+    selectPeriodTo.innerHTML = '';
     
     // If all months are filtered out (shouldn't happen for past FY, only possible if system time is messed up)
     const monthsToShow = filteredMonths.length > 0 ? filteredMonths : baseMonths;
 
     monthsToShow.forEach(m => {
-        const option = document.createElement('option');
-        option.value = m.name;
-        option.textContent = m.name;
-        selectPeriod.appendChild(option);
+        const optionFrom = document.createElement('option');
+        optionFrom.value = m.name;
+        optionFrom.textContent = m.name;
+        selectPeriodFrom.appendChild(optionFrom);
+
+        const optionTo = document.createElement('option');
+        optionTo.value = m.name;
+        optionTo.textContent = m.name;
+        selectPeriodTo.appendChild(optionTo);
     });
 
-    // Select latest available month by default
-    if (selectPeriod.options.length > 0) {
-        selectPeriod.selectedIndex = selectPeriod.options.length - 1;
+    // Select latest available month by default for "To Period", and 3 months ago (or index length - 3) for "From Period"
+    if (selectPeriodTo.options.length > 0) {
+        selectPeriodTo.selectedIndex = selectPeriodTo.options.length - 1;
+        selectPeriodFrom.selectedIndex = Math.max(0, selectPeriodTo.options.length - 3);
     }
 }
 
@@ -328,7 +348,9 @@ async function startAutomation() {
         clients: clientsToRun,
         selections: {
             financialYear: selectFy.value,
-            returnPeriod: selectPeriod.value,
+            returnPeriod: selectPeriodTo.value,
+            returnPeriodFrom: selectPeriodFrom.value,
+            returnPeriodTo: selectPeriodTo.value,
             returnType: selectType.value,
             browserZoom: document.getElementById('select-zoom').value
         },

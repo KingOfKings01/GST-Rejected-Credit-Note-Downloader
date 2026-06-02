@@ -66,34 +66,50 @@ async function doGstWork(page, selections, downloadFolder, client) {
             returnType: 'GSTR-1/IFF'
         };
 
-        // Locate where the user-selected month sits in our tracking array
-        const selectedMonthIdx = FISCAL_MONTHS.indexOf(baseSearch.returnPeriod);
-        if (selectedMonthIdx === -1) {
-            throw new Error(`The return period '${baseSearch.returnPeriod}' is invalid.`);
-        }
-
-        // --- 3. BUILD LOOKBACK QUEUE USING THE MODULO (%) PROPERTY ---
         const targetPeriodsQueue = [];
 
-        for (let lookbackOffset = 0; lookbackOffset < 3; lookbackOffset++) {
-            // Apply infinite wrap-around modulo logic: (index - offset + 12) % 12
-            // Adding 12 eliminates negative pointer outcomes when crossing into a previous fiscal year framework
-            const calculatedIdx = (selectedMonthIdx - lookbackOffset + 12) % 12;
-            const targetedMonth = FISCAL_MONTHS[calculatedIdx];
+        if (baseSearch.returnPeriodFrom && baseSearch.returnPeriodTo) {
+            const fromMonthIdx = FISCAL_MONTHS.indexOf(baseSearch.returnPeriodFrom);
+            const toMonthIdx = FISCAL_MONTHS.indexOf(baseSearch.returnPeriodTo);
 
-            let targetedYear = baseSearch.financialYear;
-
-            // CRITICAL CHECK: If our lookback calculation crosses backward past April (index 0), 
-            // the index becomes greater than the selected starting month index, signaling a year shift.
-            if (calculatedIdx > selectedMonthIdx) {
-                targetedYear = decrementFinancialYear(baseSearch.financialYear);
+            if (fromMonthIdx === -1 || toMonthIdx === -1) {
+                throw new Error(`Invalid return period range: ${baseSearch.returnPeriodFrom} to ${baseSearch.returnPeriodTo}`);
+            }
+            if (fromMonthIdx > toMonthIdx) {
+                throw new Error(`From Month (${baseSearch.returnPeriodFrom}) cannot be after To Month (${baseSearch.returnPeriodTo}).`);
             }
 
-            targetPeriodsQueue.push({
-                financialYear: targetedYear,
-                returnPeriod: targetedMonth,
-                returnType: baseSearch.returnType
-            });
+            // Run in reverse order (To Month down to From Month) so the newest month is run first
+            for (let idx = toMonthIdx; idx >= fromMonthIdx; idx--) {
+                targetPeriodsQueue.push({
+                    financialYear: baseSearch.financialYear,
+                    returnPeriod: FISCAL_MONTHS[idx],
+                    returnType: baseSearch.returnType
+                });
+            }
+        } else {
+            // Locate where the user-selected month sits in our tracking array
+            const selectedMonthIdx = FISCAL_MONTHS.indexOf(baseSearch.returnPeriod);
+            if (selectedMonthIdx === -1) {
+                throw new Error(`The return period '${baseSearch.returnPeriod}' is invalid.`);
+            }
+
+            // Fallback legacy 3-month lookback
+            for (let lookbackOffset = 0; lookbackOffset < 3; lookbackOffset++) {
+                const calculatedIdx = (selectedMonthIdx - lookbackOffset + 12) % 12;
+                const targetedMonth = FISCAL_MONTHS[calculatedIdx];
+                let targetedYear = baseSearch.financialYear;
+
+                if (calculatedIdx > selectedMonthIdx) {
+                    targetedYear = decrementFinancialYear(baseSearch.financialYear);
+                }
+
+                targetPeriodsQueue.push({
+                    financialYear: targetedYear,
+                    returnPeriod: targetedMonth,
+                    returnType: baseSearch.returnType
+                });
+            }
         }
 
 

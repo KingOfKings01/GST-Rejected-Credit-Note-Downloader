@@ -311,7 +311,7 @@ async function run() {
                 'State': client.stateName || 'N/A',
                 'GST Number': client.gstNo || 'N/A',
                 'Username': client.username,
-                [selections ? selections.returnPeriod : 'Selected Month']: `Failed: ${errStr}`,
+                [selections ? (selections.returnPeriodTo || selections.returnPeriod) : 'Selected Month']: `Failed: ${errStr}`,
                 'Error if Present': errStr,
                 'Timestamp': new Date().toLocaleString()
             });
