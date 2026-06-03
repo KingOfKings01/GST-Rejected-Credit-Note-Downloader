@@ -1,5 +1,5 @@
 // Developer Configuration
-const BYPASS_AUTH = true; // Set to true to disable authentication overlay during development
+const BYPASS_AUTH = false; // Set to true to disable authentication overlay during development
 
 // State management
 let loadedClients = [];

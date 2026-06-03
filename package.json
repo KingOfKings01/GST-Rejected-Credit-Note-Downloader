@@ -1,6 +1,6 @@
 {
   "name": "my-electron-app",
-  "version": "1.2.0",
+  "version": "1.2.2",
   "description": "Desktop Web Scraper",
   "main": "main.js",
   "scripts": {
