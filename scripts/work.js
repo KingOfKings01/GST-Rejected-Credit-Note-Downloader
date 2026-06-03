@@ -1,6 +1,7 @@
 const { fillImsForm } = require('./formHandler');
 const { processRejectedInvoices } = require('./subWorkHandler');
 const { processLargeCountRejectedInvoices } = require('./largeCountSubWork');
+const { waitForDimmer } = require('./utils');
 
 async function retry(fn, retries = 2, delay = 1000) {
     for (let i = 0; i < retries; i++) {
@@ -48,15 +49,25 @@ async function doGstWork(page, selections, downloadFolder, client) {
 
     try {
         // --- 1. POPUP HANDLER SECTION ---
-        const popupButton = page.locator('button, a, input, [role="button"], div, span', { hasText: /remind me later/i }).first();
+        let popupButton = page.locator('button, a, input, [role="button"]', { hasText: /remind me later/i }).first();
 
         try {
             // The popup might take a few seconds to load on slower connections
             await popupButton.waitFor({ state: 'visible', timeout: 8000 });
-            await popupButton.click();
+            await popupButton.click({ force: true });
+         
             await page.waitForTimeout(2000);
         } catch (popupErr) {
-            // If no popup appears within the timeout, we proceed
+            try {
+                const fallbackButton = page.locator('div, span', { hasText: /remind me later/i }).first();
+                if (await fallbackButton.count() > 0) {
+                    await fallbackButton.click({ force: true });
+         
+                    await page.waitForTimeout(2000);
+                }
+            } catch (fallbackErr) {
+                // If no popup appears or fails to click, proceed
+            }
         }
 
         // --- 2. BASELINE INPUT CONFIGURATION ---
@@ -134,6 +145,7 @@ async function doGstWork(page, selections, downloadFolder, client) {
                         if (element) element.click();
                     }, imsSelector);
                     await page.waitForLoadState('networkidle');
+                    await waitForDimmer(page, 300);
                 });
 
                 currentStage = 'Selecting Outward Supplies View';
@@ -142,6 +154,7 @@ async function doGstWork(page, selections, downloadFolder, client) {
                     await viewButton.waitFor({ state: 'visible', timeout: 10000 });
                     await viewButton.click();
                     await page.waitForLoadState('networkidle');
+                    await waitForDimmer(page, 300);
                 });
 
                 currentStage = `Filing IMS Form details for ${currentPeriod.returnPeriod}`;
@@ -149,15 +162,8 @@ async function doGstWork(page, selections, downloadFolder, client) {
                     await fillImsForm(page, currentPeriod);
                 });
 
-                // Wait for summary loading spinner to hide completely
-                const spinner = page.locator('.loading, .loading-backdrop, #loading, .spinner, .ajax-loader').first();
-                for (let i = 0; i < 10; i++) {
-                    if (await spinner.isVisible()) {
-                        await spinner.waitFor({ state: 'hidden', timeout: 8000 }).catch(() => { });
-                    }
-                    await page.waitForTimeout(300);
-                }
-                await page.waitForTimeout(1000); // Increased stable rendering timeout
+                // Wait for dimmer loader to disappear stably
+                await waitForDimmer(page, 300);
 
                 currentStage = 'Loading Summary Table';
                 const tableRowsSelector = 'table.table-responsive tbody tr';
@@ -244,15 +250,8 @@ async function doGstWork(page, selections, downloadFolder, client) {
                             await page.waitForLoadState('networkidle');
                             await page.waitForSelector(tableRowsSelector, { state: 'visible', timeout: 15000 });
 
-                            // Wait for any loading spinner to disappear
-                            const backSpinner = page.locator('.loading, .loading-backdrop, #loading, .spinner, .ajax-loader').first();
-                            for (let i = 0; i < 10; i++) {
-                                if (await backSpinner.isVisible()) {
-                                    await backSpinner.waitFor({ state: 'hidden', timeout: 8000 }).catch(() => { });
-                                }
-                                await page.waitForTimeout(300);
-                            }
-                            await page.waitForTimeout(1500); // Stabilization pause
+                            // Wait for dimmer loader to disappear stably
+                            await waitForDimmer(page, 300);
                         } else {
                             // Check if we actually entered the drill-down detail page by waiting for the Filter button
                             const filterButton = page.locator('button#showbutton');
@@ -286,15 +285,8 @@ async function doGstWork(page, selections, downloadFolder, client) {
                                 await page.waitForLoadState('networkidle');
                                 await page.waitForSelector(tableRowsSelector, { state: 'visible', timeout: 15000 });
 
-                                // Wait for any loading spinner to disappear after returning to the summary table
-                                const backSpinner = page.locator('.loading, .loading-backdrop, #loading, .spinner, .ajax-loader').first();
-                                for (let i = 0; i < 10; i++) {
-                                    if (await backSpinner.isVisible()) {
-                                        await backSpinner.waitFor({ state: 'hidden', timeout: 8000 }).catch(() => { });
-                                    }
-                                    await page.waitForTimeout(300);
-                                }
-                                await page.waitForTimeout(1500); // Stabilization pause
+                                // Wait for dimmer loader to disappear stably
+                                await waitForDimmer(page, 300);
                             } else {
                                 // Ensure summary table is still visible and stable before next iteration
                                 await page.waitForSelector(tableRowsSelector, { state: 'visible', timeout: 5000 }).catch(() => { });

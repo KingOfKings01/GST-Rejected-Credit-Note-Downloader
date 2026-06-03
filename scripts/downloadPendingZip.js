@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const { fillImsForm } = require('./formHandler');
+const { waitForDimmer } = require('./utils');
 
 async function retry(fn, retries = 2, delay = 1000) {
     for (let i = 0; i < retries; i++) {
@@ -25,12 +26,22 @@ async function downloadPendingZip(page, selections, downloadFolder, client, pend
 
     try {
         // --- 1. POPUP HANDLER SECTION ---
-        const popupButton = page.locator('button, a, input, [role="button"], div, span', { hasText: /remind me later/i }).first();
+        let popupButton = page.locator('button, a, input, [role="button"]', { hasText: /remind me later/i }).first();
         try {
             await popupButton.waitFor({ state: 'visible', timeout: 8000 });
-            await popupButton.click();
+            await popupButton.click({ force: true });
+         
             await page.waitForTimeout(2000);
-        } catch (popupErr) {}
+        } catch (popupErr) {
+            try {
+                const fallbackButton = page.locator('div, span', { hasText: /remind me later/i }).first();
+                if (await fallbackButton.count() > 0) {
+                    await fallbackButton.click({ force: true });
+         
+                    await page.waitForTimeout(2000);
+                }
+            } catch (fallbackErr) {}
+        }
 
         // --- 2. NAVIGATE TO IMS DASHBOARD ---
         const imsSelector = 'a[href="//return.gst.gov.in/imsweb/auth/imsDashboard"]';
@@ -61,15 +72,8 @@ async function downloadPendingZip(page, selections, downloadFolder, client, pend
             await fillImsForm(page, formPeriod);
         });
 
-        // Wait for summary loading spinner to hide completely
-        const spinner = page.locator('.loading, .loading-backdrop, #loading, .spinner, .ajax-loader').first();
-        for (let i = 0; i < 10; i++) {
-            if (await spinner.isVisible()) {
-                await spinner.waitFor({ state: 'hidden', timeout: 8000 }).catch(() => { });
-            }
-            await page.waitForTimeout(300);
-        }
-        await page.waitForTimeout(1500);
+        // Wait for dimmer loader to disappear stably
+        await waitForDimmer(page, 300);
 
         // --- 5. NAVIGATE INTO THE DETAILS ROW ---
         const tableRowsSelector = 'table.table-responsive tbody tr';
@@ -99,6 +103,13 @@ async function downloadPendingZip(page, selections, downloadFolder, client, pend
         await retry(async () => {
             await rowLink.click();
             await page.waitForLoadState('networkidle');
+        });
+
+        // --- 5.5 CLICK INITIAL DOWNLOAD TO INITIATE PORTAL CHECK ---
+        const firstDownloadLink = page.locator('a[data-ng-click*="dnldAdvSearchSumOut"], p a:has-text("Download")').first();
+        await retry(async () => {
+            await firstDownloadLink.waitFor({ state: 'visible', timeout: 15000 });
+            await firstDownloadLink.click();
         });
 
         // --- 6. TRIGGER THE PRE-GENERATED DOWNLOAD LINK ---

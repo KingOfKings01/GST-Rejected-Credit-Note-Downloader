@@ -1,10 +1,12 @@
 // Developer Configuration
-const BYPASS_AUTH = false; // Set to true to disable authentication overlay during development
+const BYPASS_AUTH = true; // Set to true to disable authentication overlay during development
 
 // State management
 let loadedClients = [];
 let isRunning = false;
 let currentExcelFilePath = '';
+let timerInterval = null;
+let startTime = null;
 
 // DOM Elements
 const selectFy = document.getElementById('select-fy');
@@ -160,10 +162,47 @@ async function loadClientsExcel(filePath) {
                 selected: skipChecked && c.status === 'success' ? false : true
             };
         });
+
+        // Count how many zips are ready immediately on load
+        let readyCount = 0;
+        loadedClients.forEach(c => {
+            if (c.excelZipStatus && c.excelZipStatus.includes('Zip Pending')) {
+                const partsList = c.excelZipStatus.split(';;').map(s => s.trim());
+                let hasReady = false;
+                partsList.forEach(pStr => {
+                    const parts = pStr.split('|').map(s => s.trim());
+                    if (parts.length >= 3) {
+                        const readyAt = parseInt(parts[2], 10) || 0;
+                        if (Date.now() >= readyAt) {
+                            hasReady = true;
+                        }
+                    }
+                });
+                if (hasReady) {
+                    c.status = 'zip_ready';
+                    readyCount++;
+                } else {
+                    c.status = 'zip_pending';
+                }
+            }
+        });
         
         appendConsoleLine(`System: Successfully loaded ${loadedClients.length} clients from Excel file.`, 'success');
         renderClientsList();
         updateStats();
+
+        // Show native system notification detailing how many zips are ready (only if greater than zero)
+        if (readyCount > 0) {
+            const title = 'GST Ready Zips';
+            const body = `There are ${readyCount} zip file(s) ready to download.`;
+            if (window.electronAPI && window.electronAPI.showNativeNotification) {
+                window.electronAPI.showNativeNotification(title, body);
+            } else if ("Notification" in window && Notification.permission === 'granted') {
+                new Notification(title, { body });
+            } else {
+                alert(body);
+            }
+        }
     } else {
         appendConsoleLine(`System Error: Failed to parse Excel file. ${result.error}`, 'error');
         alert(`System Error: Failed to parse Excel file.\n\n${result.error}\n\nPlease close the file in Excel and try again.`);
@@ -297,6 +336,42 @@ function updateStats() {
     statFailed.textContent = failed;
 }
 
+// Timer Functions
+function startTimer() {
+    stopTimer(); // Clear any pre-existing timers
+    document.getElementById('stat-timer').textContent = '00:00:00';
+    document.getElementById('stat-avg-time').textContent = '0.0s';
+    startTime = Date.now();
+    timerInterval = setInterval(() => {
+        const elapsedMs = Date.now() - startTime;
+        const totalSecs = Math.floor(elapsedMs / 1000);
+        const hrs = Math.floor(totalSecs / 3600);
+        const mins = Math.floor((totalSecs % 3600) / 60);
+        const secs = totalSecs % 60;
+        
+        document.getElementById('stat-timer').textContent = 
+            `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            
+        // Calculate average time per processed client
+        // A client is processed if status is 'success', 'failed', 'zip_pending', or 'zip_ready'
+        const processedCount = loadedClients.filter(c => c.status === 'success' || c.status === 'failed' || c.status === 'zip_pending' || c.status === 'zip_ready').length;
+        if (processedCount > 0) {
+            const avgSecs = (totalSecs / processedCount).toFixed(1);
+            document.getElementById('stat-avg-time').textContent = `${avgSecs}s`;
+        } else {
+            document.getElementById('stat-avg-time').textContent = '0.0s';
+        }
+    }, 1000);
+}
+
+function stopTimer() {
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+}
+
+
 // 5. Console Utility functions
 function appendConsoleLine(text, type = '') {
     const line = document.createElement('div');
@@ -366,6 +441,7 @@ async function startAutomation() {
 
     setRunningState(true);
     clearConsole();
+    startTimer();
     appendConsoleLine('System: Starting GST Rejected Credit Note Automation Process...', 'info');
 
     // Build configuration payload
@@ -434,7 +510,7 @@ function parseConsoleProgress(logText) {
             const month = zipPendingMatch[2].trim();
             const readyAt = zipPendingMatch[3].trim();
             const pendingSection = zipPendingMatch[4].trim();
-            targetClient.excelStatus = `Zip Pending | ${month} | ${readyAt} | ${pendingSection}`;
+            targetClient.excelZipStatus = `Zip Pending | ${month} | ${readyAt} | ${pendingSection}`;
             const badge = document.getElementById(`badge-${username}`);
             if (badge) {
                 badge.className = 'badge badge-warning';
@@ -510,6 +586,7 @@ window.electronAPI.onAutomationLog((data) => {
 
 window.electronAPI.onAutomationFinished((code) => {
     setRunningState(false);
+    stopTimer();
     if (code === 0) {
         appendConsoleLine('\nSystem: Automation completed successfully.', 'success');
         progressText.textContent = 'Completed';
@@ -521,6 +598,7 @@ window.electronAPI.onAutomationFinished((code) => {
     }
     updateStats();
 });
+
 
 // 9. Event Listeners
 btnBrowseExcel.addEventListener('click', async () => {
@@ -871,20 +949,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showNotification(client) {
-        if (!("Notification" in window)) return;
         const title = 'GST Zip File Ready';
-        const options = {
-            body: `Zip file is ready to download for client: ${client.clientName || client.username}`,
-            requireInteraction: true
-        };
-        if (Notification.permission === 'granted') {
-            new Notification(title, options);
-        } else if (Notification.permission !== 'denied') {
-            Notification.requestPermission().then(permission => {
-                if (permission === 'granted') {
-                    new Notification(title, options);
-                }
-            });
+        const body = `Zip file is ready to download for client: ${client.clientName || client.username}`;
+        
+        if (window.electronAPI && window.electronAPI.showNativeNotification) {
+            window.electronAPI.showNativeNotification(title, body);
+        }
+
+        if ("Notification" in window) {
+            const options = {
+                body: body,
+                requireInteraction: true
+            };
+            if (Notification.permission === 'granted') {
+                new Notification(title, options);
+            } else if (Notification.permission !== 'denied') {
+                Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        new Notification(title, options);
+                    }
+                });
+            }
         }
     }
 
@@ -901,23 +986,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
-            if (c.excelStatus && c.excelStatus.startsWith('Zip Pending')) {
-                const parts = c.excelStatus.split('|').map(s => s.trim());
-                let readyAt = 0;
-                if (parts.length >= 3) {
-                    readyAt = parseInt(parts[2], 10) || 0;
-                }
-                const now = Date.now();
+            if (c.excelZipStatus && c.excelZipStatus.includes('Zip Pending')) {
+                const partsList = c.excelZipStatus.split(';;').map(s => s.trim());
+                let latestReadyAt = 0;
+                let readyCount = 0;
+                const totalFiles = partsList.length;
+                
+                partsList.forEach(pStr => {
+                    const parts = pStr.split('|').map(s => s.trim());
+                    if (parts.length >= 3) {
+                        const readyAt = parseInt(parts[2], 10) || 0;
+                        if (Date.now() >= readyAt) {
+                            readyCount++;
+                        }
+                        if (readyAt > latestReadyAt) {
+                            latestReadyAt = readyAt;
+                        }
+                    }
+                });
                 
                 const badge = document.getElementById(`badge-${c.username}`);
-                if (now < readyAt) {
+                const now = Date.now();
+                if (readyCount < totalFiles && latestReadyAt > now) {
                     c.status = 'zip_pending';
                     if (badge) {
-                        const diffSeconds = Math.max(0, Math.floor((readyAt - now) / 1000));
+                        const diffSeconds = Math.max(0, Math.floor((latestReadyAt - now) / 1000));
                         const mins = Math.floor(diffSeconds / 60);
                         const secs = diffSeconds % 60;
                         badge.className = 'badge badge-warning';
-                        badge.textContent = `Zip Pending (${mins}:${secs.toString().padStart(2, '0')})`;
+                        badge.textContent = `Zip Pending (${totalFiles} files, ${mins}:${secs.toString().padStart(2, '0')})`;
                     }
                 } else {
                     if (c.status === 'zip_pending') {
@@ -932,7 +1029,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     c.status = 'zip_ready';
                     if (badge) {
                         badge.className = 'badge badge-success';
-                        badge.textContent = 'zips is ready to download';
+                        badge.textContent = `${totalFiles} zips ready to download`;
                     }
                 }
             }

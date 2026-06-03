@@ -1,3 +1,5 @@
+const { waitForDimmer } = require('./utils');
+
 /**
  * Selects the Financial Year, Return Period, and Return Type on the IMS dashboard and clicks Search.
  * @param {import('playwright').Page} page - The active Playwright page instance
@@ -12,8 +14,8 @@ async function fillImsForm(page, selections) {
     await finYearDropdown.waitFor({ state: 'visible', timeout: 10000 });
     await finYearDropdown.selectOption({ label: selections.financialYear });
 
-    // 🛑 CRITICAL PAUSE: Wait for the website to load months and unlock the Return Period field
-    await page.waitForTimeout(2000); 
+    // Wait for the website loader/dimmer to disappear after FY selection
+    await waitForDimmer(page, 300);
 
     // 2. Handle Return Period Dropdown
     const periodDropdown = page.locator('select[name="mon"]');
@@ -37,7 +39,7 @@ async function fillImsForm(page, selections) {
     await page.waitForLoadState('networkidle');
     
     // Wait for the loading mask/spinner to clear and the Angular data binding to finish rendering numbers
-    await page.waitForTimeout(3500);
+    await waitForDimmer(page, 300);
 }
 
 module.exports = { fillImsForm };

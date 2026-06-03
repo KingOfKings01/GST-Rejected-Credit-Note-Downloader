@@ -1,8 +1,19 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const xlsx = require('xlsx');
+
+// Set Windows AppUserModelId for native system notifications
+app.setAppUserModelId('com.gst.downloader');
+
+ipcMain.on('show-native-notification', (event, title, body) => {
+    try {
+        new Notification({ title, body }).show();
+    } catch (err) {
+        console.error('Failed to show native notification:', err);
+    }
+});
 
 let mainWindow;
 let activeChildProcess = null;
@@ -110,11 +121,12 @@ ipcMain.handle('parse-excel', async (event, customFilePath) => {
         // Map raw row fields to normalized client objects
         const clients = rawData.map(row => {
             const excelStatus = (row['STATUS'] || '').toString().trim();
+            const excelZipStatus = (row['ZIP STATUS'] || '').toString().trim();
             let status = 'pending';
-            if (excelStatus.toLowerCase() === 'success') {
-                status = 'success';
-            } else if (excelStatus.startsWith('Zip Pending')) {
+            if (excelZipStatus.includes('Zip Pending')) {
                 status = 'zip_pending';
+            } else if (excelStatus.toLowerCase() === 'success') {
+                status = 'success';
             } else if (excelStatus.toLowerCase().startsWith('failed') || excelStatus.length > 0) {
                 status = 'failed';
             }
@@ -127,7 +139,8 @@ ipcMain.handle('parse-excel', async (event, customFilePath) => {
                 clientName: row['CLIENT NAME'] || '',
                 stateName: row['STATE NAME'] || '',
                 status: status,
-                excelStatus: excelStatus
+                excelStatus: excelStatus,
+                excelZipStatus: excelZipStatus
             };
         }).filter(c => c.username && c.password);
 

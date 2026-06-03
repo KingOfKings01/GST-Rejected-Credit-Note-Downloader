@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs'); // CRITICAL: Added File System module to build folders
+const { waitForDimmer } = require('./utils');
 
 async function retry(fn, retries = 2, delay = 1000) {
     for (let i = 0; i < retries; i++) {
@@ -31,18 +32,18 @@ async function processRejectedInvoices(page, downloadFolder, client, month) {
             await filterButton.waitFor({ state: 'visible', timeout: 10000 });
             await filterButton.click();
         });
-        await page.waitForTimeout(1500);
+        await page.waitForTimeout(300);
 
         // 2. Locate the precise "Status" dropdown form element
         const statusDropdown = page.locator('select[ng-model="status"]');
         await retry(async () => {
             await statusDropdown.waitFor({ state: 'visible', timeout: 10000 });
             await statusDropdown.click();
-            await page.waitForTimeout(500);
+            await page.waitForTimeout(300);
             await statusDropdown.selectOption({ value: 'Rejected', label: 'Rejected' });
             await statusDropdown.dispatchEvent('change');
         });
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(300);
 
         // 3. Click the "Apply" button
         const applyButton = page.locator('button[ng-click*="suppfilterButton"]');
@@ -53,18 +54,8 @@ async function processRejectedInvoices(page, downloadFolder, client, month) {
 
         await page.waitForLoadState('networkidle');
         
-        // Wait for any loading spinner to disappear once before starting checks
-        const spinner = page.locator('.loading, .loading-backdrop, #loading, .spinner, .ajax-loader').first();
-        try {
-            await page.waitForTimeout(500); // Wait briefly for spinner to render
-            if (await spinner.isVisible()) {
-                await spinner.waitFor({ state: 'hidden', timeout: 8000 });
-            }
-        } catch (spinnerErr) {
-            // Spinner did not show or already hidden
-        }
-        
-        await page.waitForTimeout(2000); // Stable render timeout
+        // Wait for dimmer loader to disappear stably
+        await waitForDimmer(page, 300);
 
         // --- 4. CONDITIONAL DOWNLOAD CHECK ---
         const downloadButton = page.locator('button[data-ng-click*="exportDataOut"]').first();
@@ -89,7 +80,7 @@ async function processRejectedInvoices(page, downloadFolder, client, month) {
                     isDataPresent = true;
                     break;
                 }
-                await page.waitForTimeout(500);
+                await page.waitForTimeout(300);
             }
 
             if (isDataPresent) {
@@ -131,7 +122,7 @@ async function processRejectedInvoices(page, downloadFolder, client, month) {
             page.off('dialog', dialogHandler);
         }
 
-        await page.waitForTimeout(1000);
+        await page.waitForTimeout(300);
         return false;
 
     } catch (error) {

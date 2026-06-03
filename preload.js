@@ -24,5 +24,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
         const subscription = (event, value) => callback(value);
         ipcRenderer.on('consolidation-log', subscription);
         return () => ipcRenderer.removeListener('consolidation-log', subscription);
-    }
+    },
+    showNativeNotification: (title, body) => ipcRenderer.send('show-native-notification', title, body)
 });

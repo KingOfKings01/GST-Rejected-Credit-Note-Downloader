@@ -5,7 +5,7 @@ const xlsx = require('xlsx');
 const { loginGST } = require('./login');
 const { doGstWork } = require('./work');
 
-function updateExcelClientStatus(filePath, username, newStatus) {
+function updateExcelClientStatus(filePath, username, newStatus, columnName = 'STATUS') {
     if (!filePath) return;
     let attempts = 3;
     while (attempts > 0) {
@@ -38,11 +38,11 @@ function updateExcelClientStatus(filePath, username, newStatus) {
             }
 
             const headerRow = rows[headerRowIndex];
-            statusColIndex = headerRow.indexOf('STATUS');
+            statusColIndex = headerRow.indexOf(columnName);
             if (statusColIndex === -1) {
                 statusColIndex = headerRow.length;
                 const headerCellRef = xlsx.utils.encode_cell({ r: headerRowIndex, c: statusColIndex });
-                sheet[headerCellRef] = { t: 's', v: 'STATUS' };
+                sheet[headerCellRef] = { t: 's', v: columnName };
             }
 
             let targetRowIndex = -1;
@@ -167,82 +167,167 @@ async function run() {
             }
 
             // Decode ExcelStatus for zip pending
-            let clientPending = null;
-            let hasReadyZip = false;
+            let pendingZips = [];
+            if (client.excelZipStatus) {
+                pendingZips = client.excelZipStatus.split(';;').map(s => s.trim()).filter(s => s.startsWith('Zip Pending'));
+            }
+
+            let readyZips = [];
+            let remainingZips = [];
             
-            if (client.excelStatus && client.excelStatus.startsWith('Zip Pending')) {
-                const parts = client.excelStatus.split('|').map(s => s.trim());
+            for (let idx = 0; idx < pendingZips.length; idx++) {
+                const parts = pendingZips[idx].split('|').map(s => s.trim());
                 if (parts.length >= 4) {
-                    const month = parts[1];
                     const readyAt = parseInt(parts[2], 10);
-                    const pendingSection = parts[3];
-                    const financialYear = parts[4] || (selections && selections.financialYear) || '2025-26';
-                    const returnType = parts[5] || (selections && selections.returnType) || 'GSTR-1/IFF';
-                    
-                    clientPending = {
-                        username: client.username,
-                        month,
-                        readyAt,
-                        pendingSection,
-                        financialYear,
-                        returnType
-                    };
-                    
                     if (Date.now() >= readyAt) {
-                        hasReadyZip = true;
+                        readyZips.push({
+                            index: idx,
+                            month: parts[1],
+                            readyAt: readyAt,
+                            pendingSection: parts[3],
+                            financialYear: parts[4] || (selections && selections.financialYear) || '2025-26',
+                            returnType: parts[5] || (selections && selections.returnType) || 'GSTR-1/IFF',
+                            originalString: pendingZips[idx]
+                        });
+                    } else {
+                        remainingZips.push(pendingZips[idx]);
                     }
+                } else {
+                    remainingZips.push(pendingZips[idx]);
                 }
             }
 
-            if (clientPending && !hasReadyZip) {
-                const diffSeconds = Math.max(0, Math.floor((clientPending.readyAt - Date.now()) / 1000));
-                const mins = Math.floor(diffSeconds / 60);
-                const secs = diffSeconds % 60;
-                const waitMsg = `Zip Pending: Revisit in ${mins}m ${secs}s`;
-                console.log(`CLIENT_PROGRESS:FAILED:${client.username}: Zip generation in progress. ${mins}m ${secs}s remaining.`);
-                allReportRows.push({
-                    'Client Name': client.clientName || client.clientState || 'Unknown',
-                    'State': client.stateName || 'N/A',
-                    'GST Number': client.gstNo || 'N/A',
-                    'Username': client.username,
-                    [clientPending.month]: `Zip Pending (${mins}m remaining)`,
-                    'Error if Present': 'Zip generation in progress',
-                    'Timestamp': new Date().toLocaleString()
-                });
-                continue;
-            }
-
-            if (hasReadyZip) {
-                // --- EXCEPTION FLOW: Direct zip download ---
-                console.log(`System: Client has a pre-generated zip ready to download. Running isolated script...`);
+            if (readyZips.length > 0) {
+                // --- EXCEPTION FLOW: Direct zip download loop ---
+                console.log(`System: Client has ${readyZips.length} pre-generated zip(s) ready to download. Running loop...`);
                 const { downloadPendingZip } = require('./downloadPendingZip');
-                const directResult = await downloadPendingZip(page, selections, downloadFolder, client, clientPending);
                 
-                await page.waitForTimeout(1000);
+                let downloadedCount = 0;
+                let lastError = null;
+                
+                for (const clientPending of readyZips) {
+                    console.log(`Starting direct download for pending zip: month ${clientPending.month}, section: ${clientPending.pendingSection}`);
+                    const directResult = await downloadPendingZip(page, selections, downloadFolder, client, clientPending);
+                    
+                    await page.waitForTimeout(1000);
 
-                const isDirectDownloadSuccess = directResult && directResult.success;
-                const directDownloadError = (directResult && directResult.error) || 'Failed to download zip';
+                    const isDirectDownloadSuccess = directResult && directResult.success;
+                    
+                    if (isDirectDownloadSuccess) {
+                        downloadedCount++;
+                        allReportRows.push({
+                            'Client Name': client.clientName || client.clientState || 'Unknown',
+                            'State': client.stateName || 'N/A',
+                            'GST Number': client.gstNo || 'N/A',
+                            'Username': client.username,
+                            [clientPending.month]: `1 Download: ${clientPending.pendingSection} (${directResult.rejectedCount} records)`,
+                            'Error if Present': '',
+                            'Timestamp': new Date().toLocaleString()
+                        });
+                    } else {
+                        lastError = (directResult && directResult.error) || 'Failed to download zip';
+                        remainingZips.push(clientPending.originalString); // Put it back to try later
+                        
+                        allReportRows.push({
+                            'Client Name': client.clientName || client.clientState || 'Unknown',
+                            'State': client.stateName || 'N/A',
+                            'GST Number': client.gstNo || 'N/A',
+                            'Username': client.username,
+                            [clientPending.month]: `Failed: ${lastError}`,
+                            'Error if Present': lastError,
+                            'Timestamp': new Date().toLocaleString()
+                        });
+                    }
 
-                const clientReportRow = {
-                    'Client Name': client.clientName || client.clientState || 'Unknown',
-                    'State': client.stateName || 'N/A',
-                    'GST Number': client.gstNo || 'N/A',
-                    'Username': client.username,
-                    [clientPending.month]: isDirectDownloadSuccess 
-                        ? `1 Download: ${clientPending.pendingSection} (${directResult.rejectedCount} records)` 
-                        : `Failed: ${directDownloadError}`,
-                    'Error if Present': isDirectDownloadSuccess ? '' : directDownloadError,
-                    'Timestamp': new Date().toLocaleString()
-                };
-                allReportRows.push(clientReportRow);
+                    // Reset page navigation state back to the home/dashboard so next iteration can find elements
+                    try {
+                        const dashboardHomeBtn = page.locator('a[href*="dashboard"], button[id*="home"]').first();
+                        if (await dashboardHomeBtn.count() > 0 && await dashboardHomeBtn.isVisible()) {
+                            await dashboardHomeBtn.click();
+                            await page.waitForLoadState('networkidle');
+                        } else {
+                            await page.goto('https://services.gst.gov.in/services/auth/fowelcome');
+                            await page.waitForLoadState('networkidle');
+                        }
+                    } catch (resetErr) {
+                        try {
+                            await page.goto('https://services.gst.gov.in/services/auth/fowelcome');
+                            await page.waitForLoadState('networkidle');
+                        } catch (e) {}
+                    }
+                }
 
-                const finalStatus = isDirectDownloadSuccess ? 'Success' : `Failed: ${directDownloadError}`;
-                updateExcelClientStatus(excelFilePath, client.username, finalStatus);
+                const finalStatus = remainingZips.length > 0 
+                    ? 'Zip Pending' 
+                    : (lastError && downloadedCount === 0 ? `Failed: ${lastError}` : 'Success');
+                updateExcelClientStatus(excelFilePath, client.username, finalStatus, 'STATUS');
 
-                if (isDirectDownloadSuccess) {
-                    console.log(`CLIENT_PROGRESS:SUCCESS:${client.username}`);
+                const newZipStatus = remainingZips.join(' ;; ');
+                updateExcelClientStatus(excelFilePath, client.username, newZipStatus, 'ZIP STATUS');
+                
+                if (remainingZips.length > 0) {
+                    // Find the soonest remaining
+                    let soonestPending = null;
+                    let minDiff = Infinity;
+                    for (const pStr of remainingZips) {
+                        const parts = pStr.split('|').map(s => s.trim());
+                        if (parts.length >= 4) {
+                            const readyAt = parseInt(parts[2], 10);
+                            const diff = readyAt - Date.now();
+                            if (diff < minDiff) {
+                                minDiff = diff;
+                                soonestPending = {
+                                    month: parts[1],
+                                    readyAt: readyAt,
+                                    pendingSection: parts[3]
+                                };
+                            }
+                        }
+                    }
+                    if (soonestPending) {
+                        console.log(`CLIENT_PROGRESS:ZIP_PENDING:${client.username}:${soonestPending.month}:${soonestPending.readyAt}:${soonestPending.pendingSection}`);
+                    }
                 } else {
-                    console.log(`CLIENT_PROGRESS:FAILED:${client.username}: ${directDownloadError}`);
+                    if (lastError && downloadedCount === 0) {
+                        console.log(`CLIENT_PROGRESS:FAILED:${client.username}: ${lastError}`);
+                    } else {
+                        console.log(`CLIENT_PROGRESS:SUCCESS:${client.username}`);
+                    }
+                }
+            } else if (pendingZips.length > 0) {
+                // Find soonest readyAt when no zip is ready yet
+                let soonestPending = null;
+                let minDiff = Infinity;
+                for (const pStr of pendingZips) {
+                    const parts = pStr.split('|').map(s => s.trim());
+                    if (parts.length >= 4) {
+                        const readyAt = parseInt(parts[2], 10);
+                        const diff = readyAt - Date.now();
+                        if (diff < minDiff) {
+                            minDiff = diff;
+                            soonestPending = {
+                                month: parts[1],
+                                readyAt: readyAt,
+                                pendingSection: parts[3]
+                            };
+                        }
+                    }
+                }
+                if (soonestPending) {
+                    const diffSeconds = Math.max(0, Math.floor(minDiff / 1000));
+                    const mins = Math.floor(diffSeconds / 60);
+                    const secs = diffSeconds % 60;
+                    console.log(`CLIENT_PROGRESS:ZIP_PENDING:${client.username}:${soonestPending.month}:${soonestPending.readyAt}:${soonestPending.pendingSection}`);
+                    allReportRows.push({
+                        'Client Name': client.clientName || client.clientState || 'Unknown',
+                        'State': client.stateName || 'N/A',
+                        'GST Number': client.gstNo || 'N/A',
+                        'Username': client.username,
+                        [soonestPending.month]: `Zip Pending (${mins}m remaining)`,
+                        'Error if Present': 'Zip generation in progress',
+                        'Timestamp': new Date().toLocaleString()
+                    });
+                    continue;
                 }
             } else {
                 // --- STANDARD FLOW ---
@@ -262,7 +347,7 @@ async function run() {
                     'Username': client.username,
                 };
 
-                let pendingStatusString = '';
+                let pendingStatuses = [];
 
                 monthlyResults.forEach(res => {
                     if (res.isZipPending) {
@@ -272,7 +357,8 @@ async function run() {
                         
                         const fy = (selections && selections.financialYear) || '2025-26';
                         const rt = (selections && selections.returnType) || 'GSTR-1/IFF';
-                        pendingStatusString = `Zip Pending | ${res.month} | ${res.zipReadyAt} | ${res.pendingSection} | ${fy} | ${rt}`;
+                        const singlePending = `Zip Pending | ${res.month} | ${res.zipReadyAt} | ${res.pendingSection} | ${fy} | ${rt}`;
+                        pendingStatuses.push(singlePending);
                     } else if (res.error) {
                         hasAnyError = true;
                         if (!firstErrorMessage) firstErrorMessage = res.error;
@@ -290,11 +376,19 @@ async function run() {
                 clientReportRow['Timestamp'] = new Date().toLocaleString();
                 allReportRows.push(clientReportRow);
 
-                const finalStatus = isZipPending ? pendingStatusString : (hasAnyError ? `Failed: ${firstErrorMessage}` : 'Success');
-                updateExcelClientStatus(excelFilePath, client.username, finalStatus);
+                const finalStatus = isZipPending ? 'Zip Pending' : (hasAnyError ? `Failed: ${firstErrorMessage}` : 'Success');
+                updateExcelClientStatus(excelFilePath, client.username, finalStatus, 'STATUS');
                 
                 if (isZipPending) {
-                    console.log(`CLIENT_PROGRESS:FAILED:${client.username}: Zip Pending`);
+                    const existingZips = client.excelZipStatus ? client.excelZipStatus.split(';;').map(s => s.trim()).filter(s => s.startsWith('Zip Pending')) : [];
+                    const allPendingZips = [...existingZips, ...pendingStatuses];
+                    updateExcelClientStatus(excelFilePath, client.username, allPendingZips.join(' ;; '), 'ZIP STATUS');
+                } else {
+                    updateExcelClientStatus(excelFilePath, client.username, '', 'ZIP STATUS');
+                }
+                
+                if (isZipPending) {
+                    // Status remains zip_pending, do not overwrite to failed
                 } else if (hasAnyError) {
                     console.log(`CLIENT_PROGRESS:FAILED:${client.username}: ${firstErrorMessage}`);
                 } else {
