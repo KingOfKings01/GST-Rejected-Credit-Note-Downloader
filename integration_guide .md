@@ -10,7 +10,7 @@ This guide outlines the step-by-step procedure to integrate custom desktop or cl
 Before writing code, you must register your application in the administration dashboard.
 
 1. Navigate to the Dashboard URL:
-   👉 **[https://auth-provider0omega.vercel.app/auth/dashboard](https://auth-provider0omega.vercel.app:3005/auth/dashboard)**
+   👉 **[http://13.234.77.157/auth/dashboard](http://13.234.77.157:3005/auth/dashboard)**
 2. Click **Create New App** and give it a descriptive name.
 3. Once created, copy your secure credentials from the grid:
    - **`App ID`**: Public UUID identifying your application.
@@ -28,7 +28,7 @@ Applications perform user authentication by executing standard JSON POST request
 Verifies that an email is active, authorized to use your app, and issues a cryptographically signed Token.
 
 - **Method:** `POST`
-- **URL:** `https://auth-provider0omega.vercel.app/auth/api/authorize`
+- **URL:** `http://13.234.77.157/auth/api/authorize`
 - **Headers:** `Content-Type: application/json`
 
 #### 📤 Request Body
@@ -74,7 +74,7 @@ Returns true, registers a `LOGIN` event in audit logs, and issues a secure token
 Updates the activity logs inside the main dashboard to track exact user durations.
 
 - **Method:** `POST`
-- **URL:** `https://auth-provider0omega.vercel.app/auth/api/track-logout`
+- **URL:** `http://13.234.77.157/auth/api/track-logout`
 - **Headers:** `Content-Type: application/json`
 
 #### 📤 Request Body
