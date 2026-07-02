@@ -1,3 +1,4 @@
-Goods and Services Tax  - IMS
-4A, 4B, 6B, 6C - B2B, SEZ, DE Invoices
+﻿Goods and Services Tax  - IMS
+"4A, 4B, 6B, 6C - B2B, SEZ, DE Invoices"
 Recipient GSTIN,Trade/Legal Name,Invoice Number,Invoice Date,Invoice Type,Total Invoice Value (₹),Total Taxable Value (₹),Integrated Tax (₹),Central Tax (₹),State/UT Tax (₹),Cess (₹),Return Period,Reported in Form,Status,Remarks by Recipient
+23AAFFA4718A1Z6,M/S ANAND PRAKASH SATISH KUMAR,IDR/NV/00457/25,30/06/2025,Regular,11092,9400,0,846,846,0,06/2025,GSTR-1/IFF,Rejected,No remarks available

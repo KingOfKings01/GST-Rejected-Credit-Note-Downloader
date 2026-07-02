@@ -1,0 +1,8 @@
+﻿Goods and Services Tax  - IMS,,,,,,,,,,,,,,,
+9B - Credit / Debit Notes (Registered),,,,,,,,,,,,,,,
+Recipient GSTIN,Trade/Legal Name,Note Number,Note Date,Note Type,Note Supply Type,Note Value (₹),Total Taxable Value (₹),Integrated Tax (₹),Central Tax (₹),State/UT Tax (₹),Cess (₹),Return Period,Reported in Form,Status,Remarks by Recipient
+37AABCG4164H1ZN,GAC SHIPPING (INDIA) PRIVATE LIMITED,VZN/CN/00014/25,17-11-2025,Credit,Regular,9440,8000,0,720,720,0,Nov-25,GSTR-1/IFF,Rejected,cancelled by party with invoice/creditnote
+37AAVCA4772D1ZB,ADANI GANGAVARAM PORT  LIMITED,VZN/CN/00020/25,26-11-2025,Credit,Regular,33040,28000,0,2520,2520,0,Nov-25,GSTR-1/IFF,Rejected,No remarks available
+37AAVCA4772D1ZB,ADANI GANGAVARAM PORT  LIMITED,VZN/CN/00018/25,26-11-2025,Credit,Regular,18880,16000,0,1440,1440,0,Nov-25,GSTR-1/IFF,Rejected,No remarks available
+37AAVCA4772D1ZB,ADANI GANGAVARAM PORT  LIMITED,VZN/CN/00019/25,26-11-2025,Credit,Regular,547796,464233.84,0,41781.08,41781.08,0,Nov-25,GSTR-1/IFF,Rejected,No remarks available
+37AAVCA4772D1ZB,ADANI GANGAVARAM PORT  LIMITED,VZN/CN/00017/25,26-11-2025,Credit,Regular,76282,64645.72,0,5818.14,5818.14,0,Nov-25,GSTR-1/IFF,Rejected,No remarks available

@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const { formatFolderMonth, unzipFile, fixDatesInExcelFile } = require('./utils');
 
 async function retry(fn, retries = 2, delay = 1000) {
     for (let i = 0; i < retries; i++) {
@@ -20,7 +21,7 @@ async function retry(fn, retries = 2, delay = 1000) {
  * @param {string} month - The targeted lookback month string name
  * @returns {Promise<boolean>}
  */
-async function processLargeCountRejectedInvoices(page, downloadFolder, client, month) {
+async function processLargeCountRejectedInvoices(page, downloadFolder, client, month, financialYear) {
     const { clientName, stateName } = client;
 
     try {
@@ -70,7 +71,8 @@ async function processLargeCountRejectedInvoices(page, downloadFolder, client, m
 
         if (download) {
             const suggestedFileName = download.suggestedFilename();
-            const targetNestedDirectory = path.join(downloadFolder, clientName, stateName, month);
+            const folderLabel = formatFolderMonth(month, financialYear);
+            const targetNestedDirectory = path.join(downloadFolder, clientName, stateName, folderLabel);
 
             if (!fs.existsSync(targetNestedDirectory)) {
                 fs.mkdirSync(targetNestedDirectory, { recursive: true });
@@ -82,9 +84,7 @@ async function processLargeCountRejectedInvoices(page, downloadFolder, client, m
             let totalRejectedCount = 0;
             // Automatically extract/unzip the file using PowerShell on Windows
             try {
-                const { execSync } = require('child_process');
-                const cmd = `powershell -Command "Expand-Archive -Path \\"${finalSavePath}\\" -DestinationPath \\"${targetNestedDirectory}\\" -Force"`;
-                execSync(cmd);
+                unzipFile(finalSavePath, targetNestedDirectory);
 
                 // Read and process the extracted excel files to filter for "Rejected" records
                 const xlsx = require('xlsx');
@@ -154,6 +154,7 @@ async function processLargeCountRejectedInvoices(page, downloadFolder, client, m
                                 const newWb = xlsx.utils.book_new();
                                 xlsx.utils.book_append_sheet(newWb, newSheet, workbook.SheetNames[0]);
                                 xlsx.writeFile(newWb, filePath);
+                                fixDatesInExcelFile(filePath);
                             } else {
                                 // Clean up the .xlsx file if no rejected records exist
                                 try {

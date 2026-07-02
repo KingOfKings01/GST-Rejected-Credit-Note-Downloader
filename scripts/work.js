@@ -226,7 +226,7 @@ async function doGstWork(page, selections, downloadFolder, client) {
 
                         if (count > 500) {
                             currentStage = `Downloading large count rejected invoices for Row ${srNo} (${headingText})`;
-                            const result = await processLargeCountRejectedInvoices(page, downloadFolder, client, currentPeriod.returnPeriod);
+                            const result = await processLargeCountRejectedInvoices(page, downloadFolder, client, currentPeriod.returnPeriod, currentPeriod.financialYear);
                             if (result && result.success) {
                                 monthDownloaded = true;
                                 successfulDownloads.push({
@@ -265,7 +265,7 @@ async function doGstWork(page, selections, downloadFolder, client) {
                             if (enteredDetail) {
                                 currentStage = `Downloading rejected invoices for Row ${srNo} (${headingText})`;
                                 // subWorkHandler checks for records and downloads
-                                const downloaded = await processRejectedInvoices(page, downloadFolder, client, currentPeriod.returnPeriod);
+                                const downloaded = await processRejectedInvoices(page, downloadFolder, client, currentPeriod.returnPeriod, currentPeriod.financialYear);
                                 if (downloaded) {
                                     monthDownloaded = true;
                                     successfulDownloads.push({

@@ -1,28 +1,11 @@
 const fs = require('fs');
 const path = require('path');
 const xlsx = require('xlsx');
-
-function formatReturnPeriod(val) {
-    if (!val) return val;
-    const str = String(val).trim();
-    // Match MM/YYYY or MM-YYYY
-    const match = str.match(/^(\d{1,2})[/-](\d{4})$/);
-    if (match) {
-        const monthNum = parseInt(match[1], 10);
-        const yearStr = match[2];
-        const monthsAbbr = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        if (monthNum >= 1 && monthNum <= 12) {
-            const monthAbbr = monthsAbbr[monthNum - 1];
-            const shortYear = yearStr.substring(2);
-            return `${monthAbbr}-${shortYear}`;
-        }
-    }
-    return val;
-}
+const { applyDateFormattingToSheet } = require('./utils');
 
 /**
  * Traverses the source directory to find all client and state subdirectories,
- * and consolidates all rejected notes files per state into a single Excel report.
+ * and consolidates all rejected notes files into BOTH State-wise and Client-wise Excel reports.
  * @param {string} sourceDir - The main download/output directory
  * @param {function} logCallback - Function to log progress messages back to the UI
  */
@@ -31,12 +14,11 @@ async function consolidateReports(sourceDir, logCallback = console.log) {
         throw new Error(`Source directory "${sourceDir}" does not exist.`);
     }
 
-    logCallback(`Starting consolidation process in: ${sourceDir}`);
+    logCallback(`Starting consolidation in: ${sourceDir}`);
 
-    // Get list of clients
     const clients = fs.readdirSync(sourceDir).filter(name => {
         const fullPath = path.join(sourceDir, name);
-        return fs.statSync(fullPath).isDirectory() && !name.startsWith('.') && name !== 'Consolidated';
+        return fs.statSync(fullPath).isDirectory() && !name.startsWith('.') && name !== 'Consolidated' && name !== 'Client Wise Consolidation';
     });
 
     if (clients.length === 0) {
@@ -44,27 +26,27 @@ async function consolidateReports(sourceDir, logCallback = console.log) {
         return;
     }
 
-    let totalConsolidated = 0;
+    let totalClientConsolidated = 0;
+    let totalStateConsolidated = 0;
 
     for (const client of clients) {
         const clientPath = path.join(sourceDir, client);
         const states = fs.readdirSync(clientPath).filter(name => {
             const fullPath = path.join(clientPath, name);
-            return fs.statSync(fullPath).isDirectory() && !name.startsWith('.');
+            return fs.statSync(fullPath).isDirectory() && !name.startsWith('.') && name !== 'Consolidated' && name !== 'Client Wise Consolidation';
         });
 
+        const clientSectionData = {}; // For client-wise output
+        let username = client; // Default username fallback
+
         for (const state of states) {
+            const stateSectionData = {}; // For state-wise output
             const statePath = path.join(clientPath, state);
             const months = fs.readdirSync(statePath).filter(name => {
                 const fullPath = path.join(statePath, name);
                 return fs.statSync(fullPath).isDirectory() && name !== 'Consolidated' && !name.startsWith('.');
             });
 
-            // Group all rejected notes by section/category
-            const sectionData = {}; // Format: { [sectionName]: { headers: [], rows: [], title: '' } }
-
-            let username = client; // Default username fallback
-            
             for (const month of months) {
                 const monthPath = path.join(statePath, month);
                 const files = fs.readdirSync(monthPath).filter(name => name.endsWith('.xlsx') || name.endsWith('.csv'));
@@ -81,9 +63,7 @@ async function consolidateReports(sourceDir, logCallback = console.log) {
                         const cellKeys = Object.keys(sheet).filter(k => /^[A-Z]+\d+$/.test(k));
                         for (const key of cellKeys) {
                             const rowNum = parseInt(key.replace(/^[A-Z]+/, ''), 10);
-                            if (rowNum > maxRow) {
-                                maxRow = rowNum;
-                            }
+                            if (rowNum > maxRow) maxRow = rowNum;
                         }
                         if (maxRow > 0) {
                             let colEnd = 'O';
@@ -96,70 +76,58 @@ async function consolidateReports(sourceDir, logCallback = console.log) {
 
                         const rows = xlsx.utils.sheet_to_json(sheet, { header: 1 });
 
-                        // Dynamically find the header row by searching for "Status", "GSTIN", or "Remarks"
                         let headerIdx = -1;
                         for (let r = 0; r < Math.min(10, rows.length); r++) {
                             const row = rows[r];
-                            if (row && row.some(cell => cell && (
-                                String(cell).toLowerCase().includes('status') || 
-                                String(cell).toLowerCase().includes('gstin') ||
-                                String(cell).toLowerCase().includes('remarks')
-                            ))) {
+                            if (row &&
+                                row.filter(c => c !== null && c !== undefined && String(c).trim() !== '').length > 3 &&
+                                row.some(cell => cell && (
+                                    String(cell).toLowerCase().includes('status') ||
+                                    String(cell).toLowerCase().includes('gstin') ||
+                                    String(cell).toLowerCase().includes('remarks')
+                                ))
+                            ) {
                                 headerIdx = r;
                                 break;
                             }
                         }
 
                         if (headerIdx !== -1 && rows.length > headerIdx) {
-                            // Extract metadata dynamically
                             const rawTitle = rows[0] && rows[0][0] ? String(rows[0][0]) : '';
-                            const sectionName = (headerIdx > 0 && rows[headerIdx - 1] && rows[headerIdx - 1][0]) 
-                                ? String(rows[headerIdx - 1][0]).trim() 
+                            const sectionName = (headerIdx > 0 && rows[headerIdx - 1] && rows[headerIdx - 1][0])
+                                ? String(rows[headerIdx - 1][0]).trim()
                                 : path.basename(file, path.extname(file));
                             const headers = rows[headerIdx] || [];
-                            const noteDateIdx = headers.findIndex(h => h && String(h).trim().toLowerCase() === 'note date');
-                            const returnPeriodIdx = headers.findIndex(h => h && String(h).trim().toLowerCase() === 'return period');
-                            
-                            // Try to extract GSTIN/username from title or data rows
+
                             if (rawTitle && rawTitle.includes('GSTIN')) {
                                 const gstinMatch = rawTitle.match(/GSTIN\s*:\s*([A-Z0-9]+)/i);
                                 if (gstinMatch) username = gstinMatch[1];
                             }
 
-                            // Data rows start immediately after the header row
-                            const dataRows = [];
+                            const dataRowsStateWise = [];
+                            const dataRowsClientWise = [];
+
                             for (let r = headerIdx + 1; r < rows.length; r++) {
                                 const row = rows[r];
-                                // Skip empty, divider, or too short rows
                                 if (!row || row.length <= 1) continue;
-                                // Ignore row if it's a copy of headers
                                 if (row.some(c => c && String(c).includes('Recipient GSTIN'))) continue;
 
-                                // Format Note Date: replace '/' with '-'
-                                if (noteDateIdx !== -1 && row[noteDateIdx] !== undefined) {
-                                    const rawDate = String(row[noteDateIdx]).trim();
-                                    if (rawDate.includes('/')) {
-                                        row[noteDateIdx] = rawDate.replace(/\//g, '-');
-                                    }
-                                }
-
-                                // Format Return Period: e.g. 12/2025 -> Dec-25
-                                if (returnPeriodIdx !== -1 && row[returnPeriodIdx] !== undefined) {
-                                    row[returnPeriodIdx] = formatReturnPeriod(row[returnPeriodIdx]);
-                                }
-
-                                dataRows.push(row);
+                                dataRowsStateWise.push([...row]);
+                                dataRowsClientWise.push([state, ...row]); // Prepend State for client-wise
                             }
 
-                            if (dataRows.length > 0) {
-                                if (!sectionData[sectionName]) {
-                                    sectionData[sectionName] = {
-                                        headers: headers,
-                                        rows: [],
-                                        title: rawTitle
-                                    };
+                            if (dataRowsStateWise.length > 0) {
+                                // Add to state-wise data
+                                if (!stateSectionData[sectionName]) {
+                                    stateSectionData[sectionName] = { headers: [...headers], rows: [], title: rawTitle };
                                 }
-                                sectionData[sectionName].rows.push(...dataRows);
+                                stateSectionData[sectionName].rows.push(...dataRowsStateWise);
+
+                                // Add to client-wise data
+                                if (!clientSectionData[sectionName]) {
+                                    clientSectionData[sectionName] = { headers: ['State', ...headers], rows: [], title: rawTitle };
+                                }
+                                clientSectionData[sectionName].rows.push(...dataRowsClientWise);
                             }
                         }
                     } catch (readErr) {
@@ -168,49 +136,74 @@ async function consolidateReports(sourceDir, logCallback = console.log) {
                 }
             }
 
-            const sections = Object.keys(sectionData);
-            if (sections.length > 0) {
-                // Generate Consolidated workbook
-                const consolidatedWb = xlsx.utils.book_new();
-
-                for (const sectionName of sections) {
-                    const data = sectionData[sectionName];
-                    
-                    // Format output with top metadata
+            // ──── Write ONE consolidated file per STATE ────
+            const stateSections = Object.keys(stateSectionData);
+            if (stateSections.length > 0) {
+                const stateWb = xlsx.utils.book_new();
+                for (const sectionName of stateSections) {
+                    const data = stateSectionData[sectionName];
                     const formattedRows = [
                         [data.title || `Consolidated Report - ${sectionName}`],
-                        [`Client Username: ${username}`, `State: ${state}`],
+                        [`Client: ${client} (${username}) | State: ${state}`],
                         [],
                         [sectionName],
                         data.headers,
                         [],
                         ...data.rows
                     ];
-
-                    const consolidatedWs = xlsx.utils.aoa_to_sheet(formattedRows);
+                    const ws = xlsx.utils.aoa_to_sheet(formattedRows);
+                    applyDateFormattingToSheet(ws); // Fix dates in sheet!
                     const cleanSheetName = sectionName.replace(/[:\\/?*\[\]]/g, ' ').substring(0, 31).trim();
-                    xlsx.utils.book_append_sheet(consolidatedWb, consolidatedWs, cleanSheetName);
+                    xlsx.utils.book_append_sheet(stateWb, ws, cleanSheetName);
                 }
 
-                // Ensure Consolidated folder exists inside the State folder
-                const consolidatedFolder = path.join(statePath, 'Consolidated');
-                if (!fs.existsSync(consolidatedFolder)) {
-                    fs.mkdirSync(consolidatedFolder, { recursive: true });
-                }
-
-                const outputFilePath = path.join(consolidatedFolder, 'Consolidated_Rejected_Notes.xlsx');
+                const stateConsolidatedFolder = path.join(statePath, 'Consolidated');
+                if (!fs.existsSync(stateConsolidatedFolder)) fs.mkdirSync(stateConsolidatedFolder, { recursive: true });
+                const stateOutputFilePath = path.join(stateConsolidatedFolder, 'Consolidated_Rejected_Notes.xlsx');
                 try {
-                    xlsx.writeFile(consolidatedWb, outputFilePath);
-                    logCallback(`✅ Consolidated report written for ${client} (${state}) -> ${outputFilePath}`);
-                    totalConsolidated++;
-                } catch (writeErr) {
-                    logCallback(`❌ Error: Failed to write consolidated file for ${client} (${state}): ${writeErr.message}`);
+                    xlsx.writeFile(stateWb, stateOutputFilePath, { cellDates: true });
+                    totalStateConsolidated++;
+                } catch (err) {
+                    logCallback(`❌ Error writing state file for ${client}/${state}: ${err.message}`);
                 }
+            }
+        } // end of states loop
+
+        // ──── Write ONE consolidated file per CLIENT ────
+        const clientSections = Object.keys(clientSectionData);
+        if (clientSections.length > 0) {
+            const clientWb = xlsx.utils.book_new();
+            for (const sectionName of clientSections) {
+                const data = clientSectionData[sectionName];
+                const formattedRows = [
+                    [data.title || `Consolidated Report - ${sectionName}`],
+                    [`Client: ${client} (${username})`],
+                    [],
+                    [sectionName],
+                    data.headers,
+                    [],
+                    ...data.rows
+                ];
+                const ws = xlsx.utils.aoa_to_sheet(formattedRows);
+                applyDateFormattingToSheet(ws); // Fix dates in sheet!
+                const cleanSheetName = sectionName.replace(/[:\\/?*\[\]]/g, ' ').substring(0, 31).trim();
+                xlsx.utils.book_append_sheet(clientWb, ws, cleanSheetName);
+            }
+
+            const clientConsolidatedFolder = path.join(clientPath, 'Client Wise Consolidation');
+            if (!fs.existsSync(clientConsolidatedFolder)) fs.mkdirSync(clientConsolidatedFolder, { recursive: true });
+            const clientOutputFilePath = path.join(clientConsolidatedFolder, `${client}_Client_Wise_Consolidated.xlsx`);
+            try {
+                xlsx.writeFile(clientWb, clientOutputFilePath, { cellDates: true });
+                logCallback(`✅ Consolidated (Client-wise & State-wise) created for client "${client}"`);
+                totalClientConsolidated++;
+            } catch (err) {
+                logCallback(`❌ Error writing client file for ${client}: ${err.message}`);
             }
         }
     }
 
-    logCallback(`\n🎉 Consolidation complete! Processed ${totalConsolidated} consolidated files.`);
+    logCallback(`\n🎉 Consolidation complete! Created ${totalClientConsolidated} client-wise and ${totalStateConsolidated} state-wise files.`);
 }
 
 module.exports = { consolidateReports };

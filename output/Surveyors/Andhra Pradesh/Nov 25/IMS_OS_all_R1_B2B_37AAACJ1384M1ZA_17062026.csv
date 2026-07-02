@@ -1,3 +1,4 @@
-Goods and Services Tax  - IMS
-4A, 4B, 6B, 6C - B2B, SEZ, DE Invoices
+﻿Goods and Services Tax  - IMS
+"4A, 4B, 6B, 6C - B2B, SEZ, DE Invoices"
 Recipient GSTIN,Trade/Legal Name,Invoice Number,Invoice Date,Invoice Type,Total Invoice Value (₹),Total Taxable Value (₹),Integrated Tax (₹),Central Tax (₹),State/UT Tax (₹),Cess (₹),Return Period,Reported in Form,Status,Remarks by Recipient
+37AABCG4164H1ZN,GAC SHIPPING (INDIA) PRIVATE LIMITED,VZN/NV/00787/25,17/11/2025,Regular,9440,8000,0,720,720,0,11/2025,GSTR-1/IFF,Rejected,cancelled with Crnote

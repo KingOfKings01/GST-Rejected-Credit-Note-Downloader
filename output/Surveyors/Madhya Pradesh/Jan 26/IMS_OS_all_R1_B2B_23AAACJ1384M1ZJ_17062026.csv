@@ -1,3 +1,4 @@
-Goods and Services Tax  - IMS
-4A, 4B, 6B, 6C - B2B, SEZ, DE Invoices
+﻿Goods and Services Tax  - IMS
+"4A, 4B, 6B, 6C - B2B, SEZ, DE Invoices"
 Recipient GSTIN,Trade/Legal Name,Invoice Number,Invoice Date,Invoice Type,Total Invoice Value (₹),Total Taxable Value (₹),Integrated Tax (₹),Central Tax (₹),State/UT Tax (₹),Cess (₹),Return Period,Reported in Form,Status,Remarks by Recipient
+23BYXPS0549G1ZY,MS OM ENTERPRISES PROP SANJEEV KUMAR SAHU,IDR/NV/01586/25,16/01/2026,Regular,472,400,0,36,36,0,01/2026,GSTR-1/IFF,Rejected,No remarks available

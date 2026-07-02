@@ -1,0 +1,6 @@
+﻿Goods and Services Tax  - IMS,,,,,,,,,,,,,,,
+9B - Credit / Debit Notes (Registered),,,,,,,,,,,,,,,
+Recipient GSTIN,Trade/Legal Name,Note Number,Note Date,Note Type,Note Supply Type,Note Value (₹),Total Taxable Value (₹),Integrated Tax (₹),Central Tax (₹),State/UT Tax (₹),Cess (₹),Return Period,Reported in Form,Status,Remarks by Recipient
+24AAACG4464B2Z3,GRASIM INDUSTRIES LIMITED,KDL/CN/00004/26,14-04-2026,Credit,Regular,3540,3000,0,270,270,0,Apr-26,GSTR-1/IFF,Rejected,No remarks available
+24AAACG4464B2Z3,GRASIM INDUSTRIES LIMITED,KDL/CN/00005/26,14-04-2026,Credit,Regular,12842,10883.06,0,979.47,979.47,0,Apr-26,GSTR-1/IFF,Rejected,No remarks available
+24AAACG4464B2Z3,GRASIM INDUSTRIES LIMITED,KDL/CN/00003/26,14-04-2026,Credit,Regular,11210,9500,0,855,855,0,Apr-26,GSTR-1/IFF,Rejected,No remarks available

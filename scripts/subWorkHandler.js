@@ -1,6 +1,6 @@
 const path = require('path');
 const fs = require('fs'); // CRITICAL: Added File System module to build folders
-const { waitForDimmer } = require('./utils');
+const { waitForDimmer, formatFolderMonth, fixDatesInExcelFile } = require('./utils');
 
 async function retry(fn, retries = 2, delay = 1000) {
     for (let i = 0; i < retries; i++) {
@@ -22,7 +22,7 @@ async function retry(fn, retries = 2, delay = 1000) {
  * @param {object} client - The active client configuration containing metadata
  * @param {string} month - The currently evaluated targeted lookback month string name
  */
-async function processRejectedInvoices(page, downloadFolder, client, month) {
+async function processRejectedInvoices(page, downloadFolder, client, month, financialYear) {
     const { clientName, stateName } = client;
 
     try {
@@ -100,8 +100,9 @@ async function processRejectedInvoices(page, downloadFolder, client, month) {
                     // =========================================================================
                     // 🛠️ DYNAMIC FOLDER STRUCTURE CREATION ENGINE
                     // =========================================================================
-                    // Build absolute path to target sub-folder chain string: /Downloads/ClientName/State/Month
-                    const targetNestedDirectory = path.join(downloadFolder, clientName, stateName, month);
+                    // Build absolute path: /Downloads/ClientName/State/"Apr 25"
+                    const folderLabel = formatFolderMonth(month, financialYear);
+                    const targetNestedDirectory = path.join(downloadFolder, clientName, stateName, folderLabel);
 
                     // If any folders in this chain are missing, recursively build them automatically on the drive
                     if (!fs.existsSync(targetNestedDirectory)) {
@@ -114,6 +115,10 @@ async function processRejectedInvoices(page, downloadFolder, client, month) {
 
                     // Commit file payload to your custom physical nested drive path layout
                     await download.saveAs(finalSavePath);
+                    
+                    // Format dates in the saved Excel file
+                    fixDatesInExcelFile(finalSavePath);
+                    
                     return true;
                 }
             }
