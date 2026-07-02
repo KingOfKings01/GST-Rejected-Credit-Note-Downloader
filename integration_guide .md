@@ -1,3 +1,4 @@
+
 # 🛡️ Developer Integration Guide: Auth Provider
 
 This guide outlines the step-by-step procedure to integrate custom desktop or client applications with the centralized **Auth Provider** system.
@@ -9,7 +10,7 @@ This guide outlines the step-by-step procedure to integrate custom desktop or cl
 Before writing code, you must register your application in the administration dashboard.
 
 1. Navigate to the Dashboard URL:
-   👉 **[http://13.234.77.157/auth/dashboard](http://13.234.77.157:3005/auth/dashboard)**
+   👉 **[https://auth-provider0omega.vercel.app/auth/dashboard](https://auth-provider0omega.vercel.app:3005/auth/dashboard)**
 2. Click **Create New App** and give it a descriptive name.
 3. Once created, copy your secure credentials from the grid:
    - **`App ID`**: Public UUID identifying your application.
@@ -27,7 +28,7 @@ Applications perform user authentication by executing standard JSON POST request
 Verifies that an email is active, authorized to use your app, and issues a cryptographically signed Token.
 
 - **Method:** `POST`
-- **URL:** `http://13.234.77.157/auth/api/authorize`
+- **URL:** `https://auth-provider0omega.vercel.app/auth/api/authorize`
 - **Headers:** `Content-Type: application/json`
 
 #### 📤 Request Body
@@ -73,7 +74,7 @@ Returns true, registers a `LOGIN` event in audit logs, and issues a secure token
 Updates the activity logs inside the main dashboard to track exact user durations.
 
 - **Method:** `POST`
-- **URL:** `http://13.234.77.157/auth/api/track-logout`
+- **URL:** `https://auth-provider0omega.vercel.app/auth/api/track-logout`
 - **Headers:** `Content-Type: application/json`
 
 #### 📤 Request Body
@@ -103,10 +104,8 @@ Updates the activity logs inside the main dashboard to track exact user duration
 2. [ ] **Error Handling:** If the API returns an `authorized: false` boolean, prompt the user to contact their administrator immediately and prevent application entry.
 3. [ ] **Secure Storage:** Never hardcode your `API Key` inside client-side source code that can be easily decompiled. Inject it through secure runtime environment configurations.
 
-
-
 **For this project:**
 
-Application ID: d3035480-3654-4433-b616-671c13713ae2
+Application ID: 97b89319-db97-4b01-ae9d-3d696f8edc10
 
-Application Key: de16c6e9b3956011bb388a38cc1c56e3a8e28d371fcd1ab1
+Application Key: 7e47552ca953ad5fa46ebcc02648bd64c353cf9d7d945c37

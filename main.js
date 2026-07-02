@@ -253,9 +253,9 @@ ipcMain.handle('run-consolidation', async (event, sourceDir) => {
 });
 
 // --- Auth Provider Integration ---
-const AUTH_APP_ID = "d3035480-3654-4433-b616-671c13713ae2";
-const AUTH_API_KEY = "de16c6e9b3956011bb388a38cc1c56e3a8e28d371fcd1ab1";
-const AUTH_BASE_URL = "http://13.234.77.157/auth/api";
+const AUTH_APP_ID = "97b89319-db97-4b01-ae9d-3d696f8edc10";
+const AUTH_API_KEY = "7e47552ca953ad5fa46ebcc02648bd64c353cf9d7d945c37";
+const AUTH_BASE_URL = "https://auth-provider0omega.vercel.app/auth/api";
 
 // IPC Handler for user authorization
 ipcMain.handle('auth-authorize', async (event, email) => {
