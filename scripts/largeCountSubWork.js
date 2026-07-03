@@ -1,6 +1,6 @@
 const path = require('path');
 const fs = require('fs');
-const { formatFolderMonth, unzipFile, fixDatesInExcelFile } = require('./utils');
+const { formatFolderMonth, unzipFile, fixDatesInExcelFile, waitForDimmer } = require('./utils');
 
 async function retry(fn, retries = 2, delay = 1000) {
     for (let i = 0; i < retries; i++) {
@@ -25,6 +25,8 @@ async function processLargeCountRejectedInvoices(page, downloadFolder, client, m
     const { clientName, stateName } = client;
 
     try {
+        // Wait for details page loader to disappear stably
+        await waitForDimmer(page, 300);
         // 1. Locate and click the first "Download" link for large datasets (> 500 records)
         const firstDownloadLink = page.locator('a[data-ng-click*="dnldAdvSearchSumOut"], p a:has-text("Download")').first();
         await retry(async () => {
@@ -41,18 +43,20 @@ async function processLargeCountRejectedInvoices(page, downloadFolder, client, m
         let isLinkVisible = false;
         
         for (let i = 0; i < 20; i++) {
-            if (await generationAlert.isVisible()) {
-                isAlertVisible = true;
-                break;
-            }
             if (await secondDownloadLink.isVisible()) {
                 isLinkVisible = true;
+                isAlertVisible = false;
                 break;
+            }
+            if (await generationAlert.isVisible()) {
+                isAlertVisible = true;
             }
             await page.waitForTimeout(500);
         }
 
-        if (isAlertVisible) {
+        if (isLinkVisible) {
+            // Link is ready, proceed to download
+        } else if (isAlertVisible) {
             console.log(`⚠️ Zip file generation request accepted / in progress. Revisit in 20 minutes.`);
             return { success: false, pending: true, readyAt: Date.now() + 20 * 60 * 1000 };
         }

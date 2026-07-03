@@ -1,5 +1,5 @@
 // Developer Configuration
-const BYPASS_AUTH = false; // Set to true to disable authentication overlay during development
+const BYPASS_AUTH = true; // Set to true to disable authentication overlay during development
 
 // State management
 let loadedClients = [];
@@ -534,13 +534,64 @@ function parseConsoleProgress(logText) {
             const month = zipPendingMatch[2].trim();
             const readyAt = zipPendingMatch[3].trim();
             const pendingSection = zipPendingMatch[4].trim();
-            targetClient.excelZipStatus = `Zip Pending | ${month} | ${readyAt} | ${pendingSection}`;
+            
+            const newZip = `Zip Pending | ${month} | ${readyAt} | ${pendingSection}`;
+            let existingZips = [];
+            if (targetClient.excelZipStatus) {
+                existingZips = targetClient.excelZipStatus.split(';;').map(s => s.trim()).filter(s => s.startsWith('Zip Pending'));
+            }
+            
+            // Filter out existing zip with the exact same month and section to update or avoid duplication
+            const filteredZips = existingZips.filter(zipStr => {
+                const parts = zipStr.split('|').map(s => s.trim());
+                if (parts.length >= 4) {
+                    const existingMonth = parts[1];
+                    const existingSection = parts[3];
+                    return !(existingMonth === month && existingSection === pendingSection);
+                }
+                return true;
+            });
+            
+            filteredZips.push(newZip);
+            targetClient.excelZipStatus = filteredZips.join(' ;; ');
+            
             const badge = document.getElementById(`badge-${username}`);
             if (badge) {
                 badge.className = 'badge badge-warning';
                 badge.textContent = 'Zip Pending';
             }
             updateStats();
+        }
+        return;
+    }
+
+    // Zip Downloaded Match: CLIENT_PROGRESS:ZIP_DOWNLOADED:username:month:pendingSection
+    const zipDownloadedMatch = logText.match(/CLIENT_PROGRESS:ZIP_DOWNLOADED:([^:]+):([^:]+):(.+)/);
+    if (zipDownloadedMatch) {
+        const username = zipDownloadedMatch[1].trim();
+        const targetClient = loadedClients.find(c => c.username === username);
+        if (targetClient) {
+            const month = zipDownloadedMatch[2].trim();
+            const pendingSection = zipDownloadedMatch[3].trim();
+            
+            if (targetClient.excelZipStatus) {
+                const partsList = targetClient.excelZipStatus.split(';;').map(s => s.trim());
+                const filteredParts = partsList.filter(pStr => {
+                    const parts = pStr.split('|').map(s => s.trim());
+                    if (parts.length >= 4) {
+                        const existingMonth = parts[1];
+                        const existingSection = parts[3];
+                        return !(existingMonth === month && existingSection === pendingSection);
+                    }
+                    return true;
+                });
+                
+                targetClient.excelZipStatus = filteredParts.join(' ;; ');
+                
+                // Trigger immediate badge/stats update
+                renderClientsList();
+                updateStats();
+            }
         }
         return;
     }
@@ -1005,9 +1056,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // Start global countdown timer for zip pending statuses
     setInterval(() => {
         loadedClients.forEach(c => {
-            // If the client status is currently active, success, failed or pending, skip timer overwrite
-            if (c.status === 'running' || c.status === 'pending' || c.status === 'success' || c.status === 'failed') {
-                return;
+            // If the automation is running, we let the running process control active statuses
+            if (isRunning) {
+                if (c.status === 'running' || c.status === 'pending' || c.status === 'success' || c.status === 'failed') {
+                    return;
+                }
+            } else {
+                // If automation is not running, only skip if the client is somehow still marked as running
+                if (c.status === 'running') {
+                    return;
+                }
             }
             
             if (c.excelZipStatus && c.excelZipStatus.includes('Zip Pending')) {

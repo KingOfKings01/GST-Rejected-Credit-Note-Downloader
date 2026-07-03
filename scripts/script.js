@@ -260,6 +260,7 @@ async function run() {
                     
                     if (isDirectDownloadSuccess) {
                         downloadedCount++;
+                        console.log(`CLIENT_PROGRESS:ZIP_DOWNLOADED:${client.username}:${clientPending.month}:${clientPending.pendingSection}`);
                         const row = createBaseReportRow(client, selections, allReportRows);
                         const monthCol = formatMonthYear(clientPending.month, clientPending.financialYear || (selections ? (selections.financialYearFrom || selections.financialYear || '2025-26') : '2025-26'));
                         row[monthCol] = `1 Download: ${clientPending.pendingSection} (${directResult.rejectedCount} records)`;
@@ -367,7 +368,7 @@ async function run() {
                 }
             } else {
                 // --- STANDARD FLOW ---
-                const monthlyResults = await doGstWork(page, selections, downloadFolder, client);
+                const monthlyResults = await doGstWork(page, selections, downloadFolder, client, excelFilePath);
 
                 await page.waitForTimeout(1000);
 
