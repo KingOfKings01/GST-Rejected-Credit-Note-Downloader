@@ -187,11 +187,14 @@
               </div>
               <div class="form-group">
                 <label for="select-browsers">Max Parallel Browsers</label>
-                <input type="number" id="select-browsers" min="1" max="6" value="3" style="width: 100%; border: 1px solid var(--border); padding: 6px 8px; border-radius: 6px; font-weight: 500; font-family: inherit;">
+                <input type="number" id="select-browsers" min="1" max="6" value="3" class="config-number-input">
               </div>
-              <div class="form-group" style="display: flex; align-items: center; justify-content: center; flex-direction: column;">
-                <label for="chk-headless" style="cursor: pointer; margin-bottom: 6px; font-size: 0.85rem; font-weight: 500;">Run in Background</label>
-                <input type="checkbox" id="chk-headless" style="cursor: pointer; width: 20px; height: 20px; border: 1px solid var(--border); border-radius: 4px;">
+              <div class="form-group">
+                <label style="margin-bottom: 0.35rem;">Background Mode</label>
+                <div class="config-checkbox-group">
+                  <input type="checkbox" id="chk-headless">
+                  <label for="chk-headless" style="margin: 0;">Run in Background</label>
+                </div>
               </div>
             </div>
             <div id="concurrency-warning" style="display: none; background: rgba(245, 158, 11, 0.1); border: 1px solid var(--warning); color: var(--warning-text); padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; margin-top: 10px; font-weight: 500; text-align: left; line-height: 1.4;">

@@ -638,7 +638,8 @@ footer {
   margin-bottom: 0.5rem;
 }
 
-.auth-form input[type="email"] {
+.auth-form input[type="email"],
+.auth-form input[type="text"] {
   width: 100%;
   padding: 0.75rem 1rem;
   border-radius: 8px;
@@ -651,7 +652,8 @@ footer {
   outline: none;
 }
 
-.auth-form input[type="email"]:focus {
+.auth-form input[type="email"]:focus,
+.auth-form input[type="text"]:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
   background: rgba(15, 23, 42, 0.8);
@@ -872,4 +874,68 @@ footer {
 
 .captcha-submit-btn:hover {
   background: var(--primary-hover);
+}
+
+/* Styled Configuration Fields */
+.config-number-input {
+  width: 100%;
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background-color: var(--bg-card);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  outline: none;
+}
+
+.config-number-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-light);
+}
+
+.config-checkbox-group-wrapper {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+}
+
+.config-checkbox-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-main);
+  height: 38px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.config-checkbox-group:hover {
+  border-color: var(--primary-light);
+  background: var(--bg-card);
+}
+
+.config-checkbox-group input[type="checkbox"] {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  margin: 0;
+}
+
+.config-checkbox-group label {
+  cursor: pointer;
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-main);
+  text-transform: none;
+  letter-spacing: normal;
 }
