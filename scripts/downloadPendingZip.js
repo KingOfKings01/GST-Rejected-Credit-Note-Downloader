@@ -244,10 +244,32 @@ async function downloadPendingZip(page, selections, downloadFolder, client, pend
                     await firstDownloadLink.click();
                 });
                 
-                // Wait for the link to appear after clicking
-                await retry(async () => {
+                // Wait up to 10 seconds for either the download link or the generation pending alert to appear
+                const generationAlert = page.locator('.alert-success', { hasText: /request for file generation has been accepted|File generation is in progress/i }).first();
+                let isAlertVisible = false;
+                let isLinkVisible = false;
+                
+                for (let i = 0; i < 20; i++) {
+                    if (await secondDownloadLink.isVisible()) {
+                        isLinkVisible = true;
+                        isAlertVisible = false;
+                        break;
+                    }
+                    if (await generationAlert.isVisible()) {
+                        isAlertVisible = true;
+                    }
+                    await page.waitForTimeout(500);
+                }
+
+                if (isAlertVisible && !isLinkVisible) {
+                    console.log(`⚠️ Zip file generation request still in progress. Resetting timer for another 20 minutes.`);
+                    return { success: false, pending: true, readyAt: Date.now() + 20 * 60 * 1000 };
+                }
+
+                // Fallback wait just in case
+                if (!isLinkVisible) {
                     await secondDownloadLink.waitFor({ state: 'visible', timeout: 15000 });
-                });
+                }
             }
 
             const download = await retry(async () => {

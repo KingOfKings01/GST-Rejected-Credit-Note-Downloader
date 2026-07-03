@@ -267,6 +267,18 @@ async function run() {
                         row['Error (if present)'] = '';
                         row['Timestamp'] = new Date().toLocaleString();
                         allReportRows.push(row);
+                    } else if (directResult && directResult.pending) {
+                        // Zip is still pending generation on the portal! Reset the timer for another 20 minutes.
+                        const newPendingString = `Zip Pending | ${clientPending.month} | ${directResult.readyAt} | ${clientPending.pendingSection} | ${clientPending.financialYear} | ${clientPending.returnType}`;
+                        remainingZips.push(newPendingString);
+                        console.log(`CLIENT_PROGRESS:ZIP_PENDING:${client.username}:${clientPending.month}:${directResult.readyAt}:${clientPending.pendingSection}`);
+                        
+                        const row = createBaseReportRow(client, selections, allReportRows);
+                        const monthCol = formatMonthYear(clientPending.month, clientPending.financialYear || (selections ? (selections.financialYearFrom || selections.financialYear || '2025-26') : '2025-26'));
+                        row[monthCol] = `Zip Pending (Reset for another 20 mins)`;
+                        row['Error (if present)'] = 'Zip file generation still in progress';
+                        row['Timestamp'] = new Date().toLocaleString();
+                        allReportRows.push(row);
                     } else {
                         lastError = (directResult && directResult.error) || 'Failed to download zip';
                         remainingZips.push(clientPending.originalString); // Put it back to try later
