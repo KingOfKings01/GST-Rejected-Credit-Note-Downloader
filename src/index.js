@@ -9,7 +9,8 @@ let timerInterval = null;
 let startTime = null;
 
 // DOM Elements
-const selectFy = document.getElementById('select-fy');
+const selectFyFrom = document.getElementById('select-fy-from');
+const selectFyTo = document.getElementById('select-fy-to');
 const selectPeriodFrom = document.getElementById('select-period-from');
 const selectPeriodTo = document.getElementById('select-period-to');
 const selectType = document.getElementById('select-type');
@@ -52,17 +53,27 @@ function initializeDateOptions() {
         fyOptions.push(`${startYr}-${endYrAbbr}`);
     }
 
-    // Populate FY dropdown
-    selectFy.innerHTML = '';
-    fyOptions.forEach(fy => {
-        const option = document.createElement('option');
-        option.value = fy;
-        option.textContent = fy;
-        selectFy.appendChild(option);
+    // Populate FY dropdowns
+    selectFyFrom.innerHTML = '';
+    selectFyTo.innerHTML = '';
+    // To keep them in chronological order, reverse the fyOptions (they are generated current to past)
+    const chronologicalOptions = [...fyOptions].reverse();
+    
+    chronologicalOptions.forEach(fy => {
+        const optionFrom = document.createElement('option');
+        optionFrom.value = fy;
+        optionFrom.textContent = fy;
+        selectFyFrom.appendChild(optionFrom);
+
+        const optionTo = document.createElement('option');
+        optionTo.value = fy;
+        optionTo.textContent = fy;
+        selectFyTo.appendChild(optionTo);
     });
 
     // Populate months when FY changes or initially
-    selectFy.addEventListener('change', populateReturnPeriods);
+    selectFyFrom.addEventListener('change', populateReturnPeriods);
+    selectFyTo.addEventListener('change', populateReturnPeriods);
     
     selectPeriodFrom.addEventListener('change', () => {
         if (selectPeriodFrom.selectedIndex > selectPeriodTo.selectedIndex) {
@@ -79,7 +90,7 @@ function initializeDateOptions() {
 }
 
 function populateReturnPeriods() {
-    const selectedFy = selectFy.value;
+    const selectedFy = selectFyTo.value;
     if (!selectedFy) return;
 
     const parts = selectedFy.split('-');
@@ -432,6 +443,18 @@ async function startAutomation() {
         return;
     }
 
+    if (!selectFyFrom.value || !selectFyTo.value) {
+        alert('Please select both Financial Year From and Financial Year To.');
+        return;
+    }
+
+    const fromStart = parseInt(selectFyFrom.value.split('-')[0], 10);
+    const toStart = parseInt(selectFyTo.value.split('-')[0], 10);
+    if (fromStart > toStart) {
+        alert('Financial Year From cannot be later than Financial Year To.');
+        return;
+    }
+
     // Reset statuses of all selected clients to pending
     clientsToRun.forEach(c => {
         c.status = 'pending';
@@ -448,7 +471,8 @@ async function startAutomation() {
     const config = {
         clients: clientsToRun,
         selections: {
-            financialYear: selectFy.value,
+            financialYearFrom: selectFyFrom.value,
+            financialYearTo: selectFyTo.value,
             returnPeriod: selectPeriodTo.value,
             returnPeriodFrom: selectPeriodFrom.value,
             returnPeriodTo: selectPeriodTo.value,

@@ -43,6 +43,98 @@ function decrementFinancialYear(finYearStr) {
     return `${newStart}-${newEndStr}`;
 }
 
+function getTargetPeriodsQueue(baseSearch) {
+    const targetPeriodsQueue = [];
+    
+    let fyRange = [];
+    if (baseSearch.financialYearFrom && baseSearch.financialYearTo) {
+        const fromStart = parseInt(baseSearch.financialYearFrom.split('-')[0], 10);
+        const toStart = parseInt(baseSearch.financialYearTo.split('-')[0], 10);
+        if (fromStart > toStart) {
+            throw new Error("Financial Year From cannot be later than Financial Year To.");
+        }
+        for (let yr = fromStart; yr <= toStart; yr++) {
+            const endYrStr = String(yr + 1).slice(-2);
+            fyRange.push(`${yr}-${endYrStr}`);
+        }
+    } else {
+        fyRange.push(baseSearch.financialYear || '2025-26');
+    }
+
+    if (baseSearch.returnPeriodFrom && baseSearch.returnPeriodTo) {
+        const fromMonthIdx = FISCAL_MONTHS.indexOf(baseSearch.returnPeriodFrom);
+        const toMonthIdx = FISCAL_MONTHS.indexOf(baseSearch.returnPeriodTo);
+
+        if (fromMonthIdx === -1 || toMonthIdx === -1) {
+            throw new Error(`Invalid return period range: ${baseSearch.returnPeriodFrom} to ${baseSearch.returnPeriodTo}`);
+        }
+        if (fyRange.length === 1 && fromMonthIdx > toMonthIdx) {
+            throw new Error(`From Month (${baseSearch.returnPeriodFrom}) cannot be after To Month (${baseSearch.returnPeriodTo}).`);
+        }
+
+        for (let i = 0; i < fyRange.length; i++) {
+            const fy = fyRange[i];
+            const startIdx = (i === 0) ? fromMonthIdx : 0;
+            const endIdx = (i === fyRange.length - 1) ? toMonthIdx : 11;
+
+            // Chronological order for months within each FY
+            for (let idx = startIdx; idx <= endIdx; idx++) {
+                targetPeriodsQueue.push({
+                    financialYear: fy,
+                    returnPeriod: FISCAL_MONTHS[idx],
+                    returnType: baseSearch.returnType
+                });
+            }
+        }
+    } else {
+        // Locate where the user-selected month sits in our tracking array
+        const selectedMonthIdx = FISCAL_MONTHS.indexOf(baseSearch.returnPeriod);
+        if (selectedMonthIdx === -1) {
+            throw new Error(`The return period '${baseSearch.returnPeriod}' is invalid.`);
+        }
+
+        // Fallback legacy 3-month lookback
+        for (let lookbackOffset = 0; lookbackOffset < 3; lookbackOffset++) {
+            const calculatedIdx = (selectedMonthIdx - lookbackOffset + 12) % 12;
+            const targetedMonth = FISCAL_MONTHS[calculatedIdx];
+            let targetedYear = fyRange[fyRange.length - 1];
+
+            if (calculatedIdx > selectedMonthIdx) {
+                targetedYear = decrementFinancialYear(targetedYear);
+            }
+
+            targetPeriodsQueue.push({
+                financialYear: targetedYear,
+                returnPeriod: targetedMonth,
+                returnType: baseSearch.returnType
+            });
+        }
+    }
+    return targetPeriodsQueue;
+}
+/**
+ * Helper function to safely decrement a financial year string.
+ * Example: Transforms '2025-26' into '2024-25'
+ * @param {string} finYearStr 
+ * @returns {string}
+ */
+function decrementFinancialYear(finYearStr) {
+    const parts = finYearStr.split('-');
+    if (parts.length !== 2) return finYearStr; // Return unchanged if format is unexpected
+
+    const startYear = parseInt(parts[0], 10);
+    const endYear = parseInt(parts[1], 10);
+
+    // Decrement both segments by 1 year
+    const newStart = startYear - 1;
+    const newEnd = endYear - 1;
+
+    // Maintain the YY format for the second block (extracting last 2 digits)
+    const newEndStr = String(newEnd).slice(-2);
+
+    return `${newStart}-${newEndStr}`;
+}
+
 async function doGstWork(page, selections, downloadFolder, client) {
     console.log("Starting post-login workflow operations...");
     let currentStage = 'Popup Handling';
@@ -71,60 +163,16 @@ async function doGstWork(page, selections, downloadFolder, client) {
         }
 
         // --- 2. BASELINE INPUT CONFIGURATION ---
-        const baseSearch = selections || {
-            financialYear: '2025-26',
-            returnPeriod: 'December',
-            returnType: 'GSTR-1/IFF'
-        };
+    const baseSearch = selections || {
+        financialYearFrom: '2025-26',
+        financialYearTo: '2025-26',
+        returnPeriod: 'December',
+        returnType: 'GSTR-1/IFF'
+    };
 
-        const targetPeriodsQueue = [];
+    const targetPeriodsQueue = getTargetPeriodsQueue(baseSearch);
 
-        if (baseSearch.returnPeriodFrom && baseSearch.returnPeriodTo) {
-            const fromMonthIdx = FISCAL_MONTHS.indexOf(baseSearch.returnPeriodFrom);
-            const toMonthIdx = FISCAL_MONTHS.indexOf(baseSearch.returnPeriodTo);
-
-            if (fromMonthIdx === -1 || toMonthIdx === -1) {
-                throw new Error(`Invalid return period range: ${baseSearch.returnPeriodFrom} to ${baseSearch.returnPeriodTo}`);
-            }
-            if (fromMonthIdx > toMonthIdx) {
-                throw new Error(`From Month (${baseSearch.returnPeriodFrom}) cannot be after To Month (${baseSearch.returnPeriodTo}).`);
-            }
-
-            // Run in reverse order (To Month down to From Month) so the newest month is run first
-            for (let idx = toMonthIdx; idx >= fromMonthIdx; idx--) {
-                targetPeriodsQueue.push({
-                    financialYear: baseSearch.financialYear,
-                    returnPeriod: FISCAL_MONTHS[idx],
-                    returnType: baseSearch.returnType
-                });
-            }
-        } else {
-            // Locate where the user-selected month sits in our tracking array
-            const selectedMonthIdx = FISCAL_MONTHS.indexOf(baseSearch.returnPeriod);
-            if (selectedMonthIdx === -1) {
-                throw new Error(`The return period '${baseSearch.returnPeriod}' is invalid.`);
-            }
-
-            // Fallback legacy 3-month lookback
-            for (let lookbackOffset = 0; lookbackOffset < 3; lookbackOffset++) {
-                const calculatedIdx = (selectedMonthIdx - lookbackOffset + 12) % 12;
-                const targetedMonth = FISCAL_MONTHS[calculatedIdx];
-                let targetedYear = baseSearch.financialYear;
-
-                if (calculatedIdx > selectedMonthIdx) {
-                    targetedYear = decrementFinancialYear(baseSearch.financialYear);
-                }
-
-                targetPeriodsQueue.push({
-                    financialYear: targetedYear,
-                    returnPeriod: targetedMonth,
-                    returnType: baseSearch.returnType
-                });
-            }
-        }
-
-
-        const monthlyResults = [];
+    const monthlyResults = [];
 
         // --- 4. MULTI-MONTH RUNNER ENGINE ---
         for (const currentPeriod of targetPeriodsQueue) {
@@ -341,6 +389,7 @@ async function doGstWork(page, selections, downloadFolder, client) {
 
                 monthlyResults.push({
                     month: currentPeriod.returnPeriod,
+                    financialYear: currentPeriod.financialYear,
                     isMonthChecked: true,
                     isDownloaded: monthDownloaded,
                     isZipPending: isZipPending,
@@ -366,4 +415,7 @@ async function doGstWork(page, selections, downloadFolder, client) {
     }
 }
 
-module.exports = { doGstWork };
+module.exports = {
+    doGstWork,
+    getTargetPeriodsQueue
+};

@@ -3,7 +3,36 @@ const path = require('path');
 const { chromium } = require('playwright-core'); // Imported chromium here to manage its lifecycle from playwright-core
 const xlsx = require('xlsx');
 const { loginGST } = require('./login');
-const { doGstWork } = require('./work');
+const { doGstWork, getTargetPeriodsQueue } = require('./work');
+
+function formatMonthYear(monthStr, financialYear) {
+    if (!financialYear) return monthStr;
+    const FISCAL_MONTHS = ["April", "May", "June", "July", "August", "September", "October", "November", "December", "January", "February", "March"];
+    const shortMonth = monthStr.substring(0, 3);
+    const parts = financialYear.split('-');
+    const startYear = parseInt(parts[0], 10);
+    const endYearStr = parts[1];
+    const monthIdx = FISCAL_MONTHS.indexOf(monthStr);
+    
+    if (monthIdx < 9) {
+        return `${shortMonth} ${String(startYear).slice(-2)}`;
+    } else {
+        return `${shortMonth} ${endYearStr}`;
+    }
+}
+
+function createBaseReportRow(client, selections, allReportRows) {
+    return {
+        'Sr. No.': allReportRows.length + 1,
+        'Client Name': client.clientName || client.clientState || 'Unknown',
+        'GST Number': client.gstNo || 'N/A',
+        'Username': client.username,
+        'Financial Year From': selections ? (selections.financialYearFrom || selections.financialYear || '2025-26') : '2025-26',
+        'Financial Year To': selections ? (selections.financialYearTo || selections.financialYear || '2025-26') : '2025-26',
+        'Return Period From': selections ? (selections.returnPeriodFrom || selections.returnPeriod || 'Unknown') : 'Unknown',
+        'Return Period To': selections ? (selections.returnPeriodTo || selections.returnPeriod || 'Unknown') : 'Unknown',
+    };
+}
 
 function updateExcelClientStatus(filePath, username, newStatus, columnName = 'STATUS') {
     if (!filePath) return;
@@ -98,6 +127,22 @@ async function run() {
     const { clients, selections, downloadFolder, excelFilePath } = config;
     const allReportRows = [];
 
+    const targetPeriodsQueue = getTargetPeriodsQueue(selections || {});
+    const dynamicMonthColumns = targetPeriodsQueue.map(p => formatMonthYear(p.returnPeriod, p.financialYear));
+    const reportColumns = [
+        'Sr. No.',
+        'Client Name',
+        'GST Number',
+        'Username',
+        'Financial Year From',
+        'Financial Year To',
+        'Return Period From',
+        'Return Period To',
+        ...dynamicMonthColumns,
+        'Error (if present)',
+        'Timestamp'
+    ];
+
     const browserZoom = (selections && selections.browserZoom) || '0.85';
 
     // CRITICAL ENGINE OPTIMIZATION: Launch ONE browser instance for the entire job run
@@ -185,7 +230,7 @@ async function run() {
                             month: parts[1],
                             readyAt: readyAt,
                             pendingSection: parts[3],
-                            financialYear: parts[4] || (selections && selections.financialYear) || '2025-26',
+                            financialYear: parts[4] || (selections && selections.financialYearFrom) || '2025-26',
                             returnType: parts[5] || (selections && selections.returnType) || 'GSTR-1/IFF',
                             originalString: pendingZips[idx]
                         });
@@ -215,28 +260,22 @@ async function run() {
                     
                     if (isDirectDownloadSuccess) {
                         downloadedCount++;
-                        allReportRows.push({
-                            'Client Name': client.clientName || client.clientState || 'Unknown',
-                            'State': client.stateName || 'N/A',
-                            'GST Number': client.gstNo || 'N/A',
-                            'Username': client.username,
-                            [clientPending.month]: `1 Download: ${clientPending.pendingSection} (${directResult.rejectedCount} records)`,
-                            'Error if Present': '',
-                            'Timestamp': new Date().toLocaleString()
-                        });
+                        const row = createBaseReportRow(client, selections, allReportRows);
+                        const monthCol = formatMonthYear(clientPending.month, clientPending.financialYear || (selections ? (selections.financialYearFrom || selections.financialYear || '2025-26') : '2025-26'));
+                        row[monthCol] = `1 Download: ${clientPending.pendingSection} (${directResult.rejectedCount} records)`;
+                        row['Error (if present)'] = '';
+                        row['Timestamp'] = new Date().toLocaleString();
+                        allReportRows.push(row);
                     } else {
                         lastError = (directResult && directResult.error) || 'Failed to download zip';
                         remainingZips.push(clientPending.originalString); // Put it back to try later
                         
-                        allReportRows.push({
-                            'Client Name': client.clientName || client.clientState || 'Unknown',
-                            'State': client.stateName || 'N/A',
-                            'GST Number': client.gstNo || 'N/A',
-                            'Username': client.username,
-                            [clientPending.month]: `Failed: ${lastError}`,
-                            'Error if Present': lastError,
-                            'Timestamp': new Date().toLocaleString()
-                        });
+                        const row = createBaseReportRow(client, selections, allReportRows);
+                        const monthCol = formatMonthYear(clientPending.month, clientPending.financialYear || (selections ? (selections.financialYearFrom || selections.financialYear || '2025-26') : '2025-26'));
+                        row[monthCol] = `Failed: ${lastError}`;
+                        row['Error (if present)'] = lastError;
+                        row['Timestamp'] = new Date().toLocaleString();
+                        allReportRows.push(row);
                     }
 
                     // Reset page navigation state back to the home/dashboard so next iteration can find elements
@@ -318,15 +357,12 @@ async function run() {
                     const mins = Math.floor(diffSeconds / 60);
                     const secs = diffSeconds % 60;
                     console.log(`CLIENT_PROGRESS:ZIP_PENDING:${client.username}:${soonestPending.month}:${soonestPending.readyAt}:${soonestPending.pendingSection}`);
-                    allReportRows.push({
-                        'Client Name': client.clientName || client.clientState || 'Unknown',
-                        'State': client.stateName || 'N/A',
-                        'GST Number': client.gstNo || 'N/A',
-                        'Username': client.username,
-                        [soonestPending.month]: `Zip Pending (${mins}m remaining)`,
-                        'Error if Present': 'Zip generation in progress',
-                        'Timestamp': new Date().toLocaleString()
-                    });
+                    const row = createBaseReportRow(client, selections, allReportRows);
+                    const fy = selections ? (selections.financialYearFrom || selections.financialYear || '2025-26') : '2025-26';
+                    row[formatMonthYear(soonestPending.month, fy)] = `Zip Pending (${mins}m remaining)`;
+                    row['Error (if present)'] = 'Zip generation in progress';
+                    row['Timestamp'] = new Date().toLocaleString();
+                    allReportRows.push(row);
                     continue;
                 }
             } else {
@@ -340,39 +376,45 @@ async function run() {
                 let isZipPending = false;
                 let firstErrorMessage = '';
                 
-                const clientReportRow = {
-                    'Client Name': client.clientName || client.clientState || 'Unknown',
-                    'State': client.stateName || 'N/A',
-                    'GST Number': client.gstNo || 'N/A',
-                    'Username': client.username,
-                };
+                const clientReportRow = createBaseReportRow(client, selections, allReportRows);
 
                 let pendingStatuses = [];
 
                 monthlyResults.forEach(res => {
+                    const monthCol = formatMonthYear(res.month, res.financialYear || (selections ? (selections.financialYearFrom || selections.financialYear || '2025-26') : '2025-26'));
+                    let monthStatusParts = [];
+
                     if (res.isZipPending) {
                         isZipPending = true;
-                        clientReportRow[res.month] = `Zip Pending (Revisit in 20 mins)`;
+                        monthStatusParts.push(`Zip Pending (Revisit in 20 mins)`);
                         console.log(`CLIENT_PROGRESS:ZIP_PENDING:${client.username}:${res.month}:${res.zipReadyAt}:${res.pendingSection}`);
                         
-                        const fy = (selections && selections.financialYear) || '2025-26';
+                        const fy = (selections && selections.financialYearFrom) || '2025-26';
                         const rt = (selections && selections.returnType) || 'GSTR-1/IFF';
                         const singlePending = `Zip Pending | ${res.month} | ${res.zipReadyAt} | ${res.pendingSection} | ${fy} | ${rt}`;
                         pendingStatuses.push(singlePending);
-                    } else if (res.error) {
-                        hasAnyError = true;
-                        if (!firstErrorMessage) firstErrorMessage = res.error;
-                        clientReportRow[res.month] = `Failed: ${res.error}`;
-                    } else if (res.downloads && res.downloads.length > 0) {
+                    }
+                    
+                    if (res.downloads && res.downloads.length > 0) {
                         const downloadCount = res.downloads.length;
                         const details = res.downloads.map(d => `${d.section} (${d.records} records)`).join(', ');
-                        clientReportRow[res.month] = `${downloadCount} Download${downloadCount > 1 ? 's' : ''}: ${details}`;
+                        monthStatusParts.push(`${downloadCount} Download${downloadCount > 1 ? 's' : ''}: ${details}`);
+                    }
+                    
+                    if (res.error) {
+                        hasAnyError = true;
+                        if (!firstErrorMessage) firstErrorMessage = res.error;
+                        monthStatusParts.push(`Failed: ${res.error}`);
+                    }
+                    
+                    if (monthStatusParts.length > 0) {
+                        clientReportRow[monthCol] = monthStatusParts.join(' | ');
                     } else {
-                        clientReportRow[res.month] = 'Checked (No Data)';
+                        clientReportRow[monthCol] = 'Checked (No Data)';
                     }
                 });
 
-                clientReportRow['Error if Present'] = firstErrorMessage;
+                clientReportRow['Error (if present)'] = firstErrorMessage;
                 clientReportRow['Timestamp'] = new Date().toLocaleString();
                 allReportRows.push(clientReportRow);
 
@@ -400,15 +442,10 @@ async function run() {
             console.error(`CLIENT_PROGRESS:FAILED:${client.username}: Error occurred:`, err.message || err);
             const errStr = err.message || String(err);
             updateExcelClientStatus(excelFilePath, client.username, `Failed: ${errStr}`);
-            allReportRows.push({
-                'Client Name': client.clientName || client.clientState || 'Unknown',
-                'State': client.stateName || 'N/A',
-                'GST Number': client.gstNo || 'N/A',
-                'Username': client.username,
-                [selections ? (selections.returnPeriodTo || selections.returnPeriod) : 'Selected Month']: `Failed: ${errStr}`,
-                'Error if Present': errStr,
-                'Timestamp': new Date().toLocaleString()
-            });
+            const row = createBaseReportRow(client, selections, allReportRows);
+            row['Error (if present)'] = errStr;
+            row['Timestamp'] = new Date().toLocaleString();
+            allReportRows.push(row);
         } finally {
             try {
                 await page.close();
@@ -426,7 +463,7 @@ async function run() {
     try {
         if (allReportRows.length > 0) {
             const reportWb = xlsx.utils.book_new();
-            const reportWs = xlsx.utils.json_to_sheet(allReportRows);
+            const reportWs = xlsx.utils.json_to_sheet(allReportRows, { header: reportColumns });
             xlsx.utils.book_append_sheet(reportWb, reportWs, 'Automation Report');
 
             // Format date for file name: YYYY-MM-DD_HH-MM-SS

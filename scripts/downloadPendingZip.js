@@ -130,7 +130,7 @@ async function downloadPendingZip(page, selections, downloadFolder, client, pend
 
         const formPeriod = {
 
-            financialYear: pendingInfo.financialYear || (selections && selections.financialYear) || '2025-26',
+            financialYear: pendingInfo.financialYear || (selections && selections.financialYearFrom) || '2025-26',
 
             returnPeriod: month,
 
@@ -213,28 +213,27 @@ async function downloadPendingZip(page, selections, downloadFolder, client, pend
 
 
         // --- 5.5 CLICK INITIAL DOWNLOAD TO INITIATE PORTAL CHECK ---
-
+        const secondDownloadLink = page.locator('span[data-ng-if="advSearchDnld"] a, a:has-text("Click here to")').first();
         const firstDownloadLink = page.locator('a[data-ng-click*="dnldAdvSearchSumOut"], p a:has-text("Download")').first();
 
-        await retry(async () => {
-
-            await firstDownloadLink.waitFor({ state: 'visible', timeout: 15000 });
-
-            await firstDownloadLink.click();
-
-        });
-
-
-
-        // --- 6. TRIGGER THE PRE-GENERATED DOWNLOAD LINK ---
-
-        const secondDownloadLink = page.locator('span[data-ng-if="advSearchDnld"] a, a:has-text("Click here to")').first();
-
-        await retry(async () => {
-
+        // Check if the pre-generated link is ALREADY visible (give it 15 seconds to render)
+        let isPreGeneratedVisible = false;
+        try {
             await secondDownloadLink.waitFor({ state: 'visible', timeout: 15000 });
+            isPreGeneratedVisible = true;
+        } catch (e) {}
 
-        });
+        if (!isPreGeneratedVisible) {
+            await retry(async () => {
+                await firstDownloadLink.waitFor({ state: 'visible', timeout: 15000 });
+                await firstDownloadLink.click();
+            });
+            
+            // Wait for the link to appear after clicking
+            await retry(async () => {
+                await secondDownloadLink.waitFor({ state: 'visible', timeout: 15000 });
+            });
+        }
 
 
 
@@ -254,7 +253,7 @@ async function downloadPendingZip(page, selections, downloadFolder, client, pend
 
             const suggestedFileName = download.suggestedFilename();
 
-            const financialYear = pendingInfo.financialYear || (selections && selections.financialYear) || '2025-26';
+            const financialYear = pendingInfo.financialYear || (selections && selections.financialYearFrom) || '2025-26';
 
             const folderLabel = formatFolderMonth(month, financialYear);
 

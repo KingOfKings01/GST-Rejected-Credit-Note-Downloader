@@ -1,0 +1,5 @@
+﻿Goods and Services Tax  - IMS
+9B - Credit / Debit Notes (Registered)
+Recipient GSTIN,Trade/Legal Name,Note Number,Note Date,Note Type,Note Supply Type,Note Value (₹),Total Taxable Value (₹),Integrated Tax (₹),Central Tax (₹),State/UT Tax (₹),Cess (₹),Return Period,Reported in Form,Status,Remarks by Recipient
+29AAACL1681P2ZY,LTM LIMITED,CN/KA/JUL25/1772,31/07/2025,Credit,SEZWP,35692,30026,1502,0,0,0,07/2025,GSTR-1/IFF,Rejected,No remarks available
+29AAICM6969P1Z9,CARDINAL HEALTH INTERNATIONAL INDIA PRIVATE LIMITED,CN/KA/JUL25/1444,31/07/2025,Credit,Regular,383631,333528,0,20012,20012,0,07/2025,GSTR-1/IFF,Rejected,No remarks available

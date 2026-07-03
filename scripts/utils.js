@@ -107,7 +107,7 @@ function parseToJSDate(val) {
         if (val >= 36526 && val <= 73050) {
             const excelEpoch = new Date(Date.UTC(1899, 11, 30));
             const jsDate = new Date(excelEpoch.getTime() + val * 24 * 60 * 60 * 1000);
-            return { date: jsDate, format: 'm/d/yyyy' };
+            return { date: jsDate, format: 'dd-mm-yyyy' };
         }
         return null;
     }
@@ -121,7 +121,7 @@ function parseToJSDate(val) {
     if (match) {
         const d = parseInt(match[1], 10), m = parseInt(match[2], 10), y = parseInt(match[3], 10);
         if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-            return { date: new Date(Date.UTC(y, m - 1, d)), format: 'm/d/yyyy' };
+            return { date: new Date(Date.UTC(y, m - 1, d)), format: 'dd-mm-yyyy' };
         }
     }
 
@@ -130,7 +130,7 @@ function parseToJSDate(val) {
     if (match) {
         const y = parseInt(match[1], 10), m = parseInt(match[2], 10), d = parseInt(match[3], 10);
         if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-            return { date: new Date(Date.UTC(y, m - 1, d)), format: 'm/d/yyyy' };
+            return { date: new Date(Date.UTC(y, m - 1, d)), format: 'dd-mm-yyyy' };
         }
     }
 
@@ -185,7 +185,7 @@ function getDateFormat(headerText) {
     if (!headerText) return null;
     const h = String(headerText).trim().toLowerCase();
     if (h.includes('period') || h.includes('month')) return 'mmm-yy';
-    if (h.includes('date')) return 'm/d/yyyy';
+    if (h.includes('invoice date') || h.includes('note date') || h.includes('original date') || h.includes('revised date') || h.includes('date')) return 'dd-mm-yyyy';
     return null;
 }
 
@@ -218,6 +218,9 @@ function applyDateFormattingToSheet(sheet) {
         }
     }
     if (headerIdx === -1) return;
+
+    // Apply autofilter starting from the header row
+    sheet['!autofilter'] = { ref: xlsx.utils.encode_range({ s: { r: headerIdx, c: range.s.c }, e: range.e }) };
 
     const headers = rows[headerIdx];
     const dateColumns = [];

@@ -1,0 +1,6 @@
+﻿Goods and Services Tax  - IMS
+9B - Credit / Debit Notes (Registered)
+Recipient GSTIN,Trade/Legal Name,Note Number,Note Date,Note Type,Note Supply Type,Note Value (₹),Total Taxable Value (₹),Integrated Tax (₹),Central Tax (₹),State/UT Tax (₹),Cess (₹),Return Period,Reported in Form,Status,Remarks by Recipient
+06AAGCC8191F1ZK,COURSERA INDIA PRIVATE LIMITED,CN/KA/DEC25/1331,31/12/2025,Credit,Regular,122630,110918,5546,0,0,0,12/2025,GSTR-1/IFF,Rejected,No remarks available
+29AADCH5825N1Z2,HP PPS SERVICES INDIA PRIVATE LIMITED,CN/KA/DEC25/1377,31/12/2025,Credit,Regular,84159,72615,0,1815.5,1815.5,0,12/2025,GSTR-1/IFF,Rejected,No remarks available
+29AAICG7692M2ZM,KYNDRYL SOLUTIONS PRIVATE LIMITED,CN/KA/DEC25/1345,31/12/2025,Credit,SEZWP,53999,48420,2421,0,0,0,12/2025,GSTR-1/IFF,Rejected,No remarks available

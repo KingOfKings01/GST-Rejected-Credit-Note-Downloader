@@ -1,0 +1,6 @@
+﻿Goods and Services Tax  - IMS
+9B - Credit / Debit Notes (Registered)
+Recipient GSTIN,Trade/Legal Name,Note Number,Note Date,Note Type,Note Supply Type,Note Value (₹),Total Taxable Value (₹),Integrated Tax (₹),Central Tax (₹),State/UT Tax (₹),Cess (₹),Return Period,Reported in Form,Status,Remarks by Recipient
+27AABCM4573E1ZJ,CAPGEMINI TECHNOLOGY SERVICES INDIA LIMITED,CN/MH/DEC25/1304,31/12/2025,Credit,Regular,76294,65926,0,501,501,0,12/2025,GSTR-1/IFF,Rejected,No remarks available
+27AABCM4573E1ZJ,CAPGEMINI TECHNOLOGY SERVICES INDIA LIMITED,CN/MH/DEC25/1142,31/12/2025,Credit,Regular,85839,67383,0,1685,1685,0,12/2025,GSTR-1/IFF,Rejected,No remarks available
+27ABCFS4862M1ZN,S&R Associates,CN/MH/DEC25/1528,31/12/2025,Credit,Regular,660054,539272,0,48534.5,48534.5,0,12/2025,GSTR-1/IFF,Rejected,No remarks available

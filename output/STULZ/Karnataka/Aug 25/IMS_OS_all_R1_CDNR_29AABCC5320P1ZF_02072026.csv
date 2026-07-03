@@ -1,0 +1,5 @@
+﻿Goods and Services Tax  - IMS,,,,,,,,,,,,,,,
+9B - Credit / Debit Notes (Registered),,,,,,,,,,,,,,,
+Recipient GSTIN,Trade/Legal Name,Note Number,Note Date,Note Type,Note Supply Type,Note Value (₹),Total Taxable Value (₹),Integrated Tax (₹),Central Tax (₹),State/UT Tax (₹),Cess (₹),Return Period,Reported in Form,Status,Remarks by Recipient
+29AAACL2089B1ZO,JONES LANG LASALLE PROPERTY CONSULTANTS (INDIA) PVT LTD,1106250009,21-08-2025,Credit,Regular,30776.29,24043.97,0,3366.16,3366.16,0,Aug-25,GSTR-1/IFF,Rejected,No remarks available
+29ABOCS0507L2ZW,ALTIMETRIK PRIVATE LIMITED,1106250010,30-08-2025,Credit,SEZWOP,35998.5,35998.5,0,0,0,0,Aug-25,GSTR-1/IFF,Rejected,No remarks available
