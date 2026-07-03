@@ -29,7 +29,7 @@ async function processRejectedInvoices(page, downloadFolder, client, month, fina
         // 1. Locate and click the "Filter" button
         const filterButton = page.locator('button#showbutton');
         await retry(async () => {
-            await filterButton.waitFor({ state: 'visible', timeout: 10000 });
+            await filterButton.waitFor({ state: 'visible', timeout: 30000 });
             await filterButton.click();
         });
         await page.waitForTimeout(300);
@@ -37,7 +37,7 @@ async function processRejectedInvoices(page, downloadFolder, client, month, fina
         // 2. Locate the precise "Status" dropdown form element
         const statusDropdown = page.locator('select[ng-model="status"]');
         await retry(async () => {
-            await statusDropdown.waitFor({ state: 'visible', timeout: 10000 });
+            await statusDropdown.waitFor({ state: 'visible', timeout: 30000 });
             await statusDropdown.click();
             await page.waitForTimeout(300);
             await statusDropdown.selectOption({ value: 'Rejected', label: 'Rejected' });
@@ -48,7 +48,7 @@ async function processRejectedInvoices(page, downloadFolder, client, month, fina
         // 3. Click the "Apply" button
         const applyButton = page.locator('button[ng-click*="suppfilterButton"]');
         await retry(async () => {
-            await applyButton.waitFor({ state: 'visible', timeout: 10000 });
+            await applyButton.waitFor({ state: 'visible', timeout: 30000 });
             await applyButton.click();
         });
 
@@ -84,8 +84,8 @@ async function processRejectedInvoices(page, downloadFolder, client, month, fina
             }
 
             if (isDataPresent) {
-                // Set up a promise listener with a 15-second timeout to intercept the browser file stream download event
-                const downloadPromise = page.waitForEvent('download', { timeout: 15000 }).catch((e) => {
+                // Set up a promise listener with a 30-second timeout to intercept the browser file stream download event
+                const downloadPromise = page.waitForEvent('download', { timeout: 30000 }).catch((e) => {
                     return null;
                 });
 

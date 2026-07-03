@@ -94,7 +94,7 @@ async function downloadPendingZip(page, selections, downloadFolder, client, pend
 
         await retry(async () => {
 
-            await page.waitForSelector(imsSelector, { state: 'attached', timeout: 15000 });
+            await page.waitForSelector(imsSelector, { state: 'attached', timeout: 30000 });
 
             await page.evaluate((selector) => {
 
@@ -116,7 +116,7 @@ async function downloadPendingZip(page, selections, downloadFolder, client, pend
 
             const viewButton = page.locator('button[data-ng-click*="outwardsupplies"]').first();
 
-            await viewButton.waitFor({ state: 'visible', timeout: 10000 });
+            await viewButton.waitFor({ state: 'visible', timeout: 30000 });
 
             await viewButton.click();
 
@@ -156,7 +156,7 @@ async function downloadPendingZip(page, selections, downloadFolder, client, pend
 
         const tableRowsSelector = 'table.table-responsive tbody tr';
 
-        await page.waitForSelector(tableRowsSelector, { state: 'visible', timeout: 10000 });
+        await page.waitForSelector(tableRowsSelector, { state: 'visible', timeout: 30000 });
 
 
 
@@ -226,8 +226,8 @@ async function downloadPendingZip(page, selections, downloadFolder, client, pend
         let isPreGeneratedVisible = false;
 
         try {
-            // Wait up to 5 seconds to see if the second download link is visible
-            await secondDownloadLink.waitFor({ state: 'visible', timeout: 5000 });
+            // Wait up to 10 seconds to see if the second download link is visible
+            await secondDownloadLink.waitFor({ state: 'visible', timeout: 10000 });
             isPreGeneratedVisible = true;
             isLargeCount = true;
         } catch (e) {
@@ -240,7 +240,7 @@ async function downloadPendingZip(page, selections, downloadFolder, client, pend
         if (isLargeCount) {
             if (!isPreGeneratedVisible) {
                 await retry(async () => {
-                    await firstDownloadLink.waitFor({ state: 'visible', timeout: 15000 });
+                    await firstDownloadLink.waitFor({ state: 'visible', timeout: 30000 });
                     await firstDownloadLink.click();
                 });
                 
@@ -268,12 +268,12 @@ async function downloadPendingZip(page, selections, downloadFolder, client, pend
 
                 // Fallback wait just in case
                 if (!isLinkVisible) {
-                    await secondDownloadLink.waitFor({ state: 'visible', timeout: 15000 });
+                    await secondDownloadLink.waitFor({ state: 'visible', timeout: 30000 });
                 }
             }
 
             const download = await retry(async () => {
-                const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
+                const downloadPromise = page.waitForEvent('download', { timeout: 45000 });
                 await secondDownloadLink.click();
                 return await downloadPromise;
             });

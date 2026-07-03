@@ -240,10 +240,10 @@ function renderClientsList() {
                (c.username && c.username.toLowerCase().includes(query));
         
         if (onlyReady) {
-            return matchesQuery && c.status === 'zip_ready';
+            return matchesQuery && (c.status === 'zip_ready' || c.status === 'running' || c.status === 'zip_pending');
         }
         if (onlyFailed) {
-            return matchesQuery && c.status === 'failed';
+            return matchesQuery && (c.status === 'failed' || c.status === 'running' || c.status === 'zip_pending');
         }
         return matchesQuery;
     });

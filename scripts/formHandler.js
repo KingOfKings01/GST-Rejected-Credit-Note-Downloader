@@ -11,7 +11,7 @@ const { waitForDimmer } = require('./utils');
 async function fillImsForm(page, selections) {
     // 1. Handle Financial Year Dropdown
     const finYearDropdown = page.locator('select[name="fin"]');
-    await finYearDropdown.waitFor({ state: 'visible', timeout: 10000 });
+    await finYearDropdown.waitFor({ state: 'visible', timeout: 30000 });
     await finYearDropdown.selectOption({ label: selections.financialYear });
 
     // Wait for the website loader/dimmer to disappear after FY selection
@@ -19,19 +19,19 @@ async function fillImsForm(page, selections) {
 
     // 2. Handle Return Period Dropdown
     const periodDropdown = page.locator('select[name="mon"]');
-    await periodDropdown.waitFor({ state: 'visible', timeout: 10000 });
+    await periodDropdown.waitFor({ state: 'visible', timeout: 30000 });
     await periodDropdown.selectOption({ label: selections.returnPeriod });
 
     // 3. Handle Return Type Dropdown
     const returnTypeDropdown = page.locator('select[name="rtntyp"]');
-    await returnTypeDropdown.waitFor({ state: 'visible', timeout: 10000 });
+    await returnTypeDropdown.waitFor({ state: 'visible', timeout: 30000 });
     await returnTypeDropdown.selectOption({ label: selections.returnType });
 
     // 4. Click the Search Button
     const searchButton = page.locator('button[data-ng-bind="trans.LBL_SCH"]');
 
     // Wait until the button is fully active and visible on screen
-    await searchButton.waitFor({ state: 'visible', timeout: 10000 });
+    await searchButton.waitFor({ state: 'visible', timeout: 30000 });
 
     await searchButton.click();
 

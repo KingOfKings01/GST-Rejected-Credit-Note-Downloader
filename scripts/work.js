@@ -190,7 +190,7 @@ async function doGstWork(page, selections, downloadFolder, client, excelFilePath
                 currentStage = 'Navigating to IMS Dashboard';
                 const imsSelector = 'a[href="//return.gst.gov.in/imsweb/auth/imsDashboard"]';
                 await retry(async () => {
-                    await page.waitForSelector(imsSelector, { state: 'attached', timeout: 15000 });
+                    await page.waitForSelector(imsSelector, { state: 'attached', timeout: 30000 });
                     await page.evaluate((selector) => {
                         const element = document.querySelector(selector);
                         if (element) element.click();
@@ -202,7 +202,7 @@ async function doGstWork(page, selections, downloadFolder, client, excelFilePath
                 currentStage = 'Selecting Outward Supplies View';
                 await retry(async () => {
                     const viewButton = page.locator('button[data-ng-click*="outwardsupplies"]').first();
-                    await viewButton.waitFor({ state: 'visible', timeout: 10000 });
+                    await viewButton.waitFor({ state: 'visible', timeout: 30000 });
                     await viewButton.click();
                     await page.waitForLoadState('networkidle');
                     await waitForDimmer(page, 300);
@@ -219,7 +219,7 @@ async function doGstWork(page, selections, downloadFolder, client, excelFilePath
                 currentStage = 'Loading Summary Table';
                 const tableRowsSelector = 'table.table-responsive tbody tr';
                 await retry(async () => {
-                    await page.waitForSelector(tableRowsSelector, { state: 'visible', timeout: 10000 });
+                    await page.waitForSelector(tableRowsSelector, { state: 'visible', timeout: 30000 });
                 });
 
                 const totalRowsToProcess = 6;
@@ -254,7 +254,7 @@ async function doGstWork(page, selections, downloadFolder, client, excelFilePath
                 for (let srNo = 1; srNo <= totalRowsToProcess; srNo++) {
                     currentStage = `Processing Summary Row ${srNo}`;
                     const currentRow = page.locator(tableRowsSelector, { has: page.locator(`td.sno-col:text-is("${srNo}")`) });
-                    await currentRow.waitFor({ state: 'attached', timeout: 5000 });
+                    await currentRow.waitFor({ state: 'attached', timeout: 30000 });
 
                     // Read the heading text of the section
                     const headingText = (await currentRow.locator('td:nth-child(2)').innerText()).trim().replace(/\n/g, ' ');
@@ -348,7 +348,7 @@ async function doGstWork(page, selections, downloadFolder, client, excelFilePath
                             }
 
                             await page.waitForLoadState('networkidle');
-                            await page.waitForSelector(tableRowsSelector, { state: 'visible', timeout: 15000 });
+                            await page.waitForSelector(tableRowsSelector, { state: 'visible', timeout: 30000 });
 
                             // Wait for dimmer loader to disappear stably
                             await waitForDimmer(page, 300);
@@ -357,7 +357,7 @@ async function doGstWork(page, selections, downloadFolder, client, excelFilePath
                             const filterButton = page.locator('button#showbutton');
                             let enteredDetail = false;
                             try {
-                                await filterButton.waitFor({ state: 'visible', timeout: 4000 });
+                                await filterButton.waitFor({ state: 'visible', timeout: 10000 });
                                 enteredDetail = true;
                             } catch (e) {
                             }
@@ -383,13 +383,13 @@ async function doGstWork(page, selections, downloadFolder, client, excelFilePath
                                 }
 
                                 await page.waitForLoadState('networkidle');
-                                await page.waitForSelector(tableRowsSelector, { state: 'visible', timeout: 15000 });
+                                await page.waitForSelector(tableRowsSelector, { state: 'visible', timeout: 30000 });
 
                                 // Wait for dimmer loader to disappear stably
                                 await waitForDimmer(page, 300);
                             } else {
                                 // Ensure summary table is still visible and stable before next iteration
-                                await page.waitForSelector(tableRowsSelector, { state: 'visible', timeout: 5000 }).catch(() => { });
+                                await page.waitForSelector(tableRowsSelector, { state: 'visible', timeout: 15000 }).catch(() => { });
                             }
                         }
                     }
