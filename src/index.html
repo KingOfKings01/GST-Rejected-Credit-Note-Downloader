@@ -185,6 +185,17 @@
                   <option value="0.7">70% Zoom</option>
                 </select>
               </div>
+              <div class="form-group">
+                <label for="select-browsers">Max Parallel Browsers</label>
+                <input type="number" id="select-browsers" min="1" max="6" value="3" style="width: 100%; border: 1px solid var(--border); padding: 6px 8px; border-radius: 6px; font-weight: 500; font-family: inherit;">
+              </div>
+              <div class="form-group" style="display: flex; align-items: center; justify-content: center; flex-direction: column;">
+                <label for="chk-headless" style="cursor: pointer; margin-bottom: 6px; font-size: 0.85rem; font-weight: 500;">Run in Background</label>
+                <input type="checkbox" id="chk-headless" style="cursor: pointer; width: 20px; height: 20px; border: 1px solid var(--border); border-radius: 4px;">
+              </div>
+            </div>
+            <div id="concurrency-warning" style="display: none; background: rgba(245, 158, 11, 0.1); border: 1px solid var(--warning); color: var(--warning-text); padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; margin-top: 10px; font-weight: 500; text-align: left; line-height: 1.4;">
+              ⚠️ Running more than 3 parallel browsers requires significant CPU/RAM. Performance may be degraded depending on your PC specifications.
             </div>
           </div>
         </div>
@@ -352,6 +363,17 @@
       <div class="progress-percent" id="progress-percentage">0%</div>
     </footer>
 
+  </div>
+
+  <!-- Captcha Queue Sidebar Panel -->
+  <div id="captcha-panel" class="captcha-sidebar-wrapper hidden-panel">
+    <div class="captcha-sidebar-header">
+      <h3 style="margin: 0; font-size: 1.1rem; color: var(--primary-text); font-weight: 700;">Active Captcha Queue</h3>
+      <span class="captcha-queue-count" id="captcha-count-badge" style="font-size: 0.8rem; background: var(--primary-light); color: var(--primary-text); padding: 2px 8px; border-radius: 20px; font-weight: 600;">0 pending</span>
+    </div>
+    <div class="captcha-cards-container" id="captcha-queue-container">
+      <!-- Dynamic captcha cards will render here -->
+    </div>
   </div>
 
   <script src="index.js"></script>

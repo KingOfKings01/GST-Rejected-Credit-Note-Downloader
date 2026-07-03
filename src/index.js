@@ -412,8 +412,19 @@ function setRunningState(running) {
     const chkOnlyFailed = document.getElementById('chk-only-failed');
     if (chkOnlyFailed) chkOnlyFailed.disabled = running;
 
+    const selectBrowsers = document.getElementById('select-browsers');
+    if (selectBrowsers) selectBrowsers.disabled = running;
+    const chkHeadless = document.getElementById('chk-headless');
+    if (chkHeadless) chkHeadless.disabled = running;
+
     btnRunAutomation.disabled = running;
     btnStopAutomation.disabled = !running;
+
+    // Reset captcha queue when stopping
+    if (!running) {
+        pendingCaptchaQueue = [];
+        renderCaptchaQueue();
+    }
 }
 
 async function startAutomation() {
@@ -477,7 +488,9 @@ async function startAutomation() {
             returnPeriodFrom: selectPeriodFrom.value,
             returnPeriodTo: selectPeriodTo.value,
             returnType: selectType.value,
-            browserZoom: document.getElementById('select-zoom').value
+            browserZoom: document.getElementById('select-zoom').value,
+            maxBrowsers: parseInt(document.getElementById('select-browsers').value, 10) || 3,
+            runHeadless: document.getElementById('chk-headless').checked === true
         },
         downloadFolder,
         excelFilePath: currentExcelFilePath
@@ -522,6 +535,23 @@ function parseConsoleProgress(logText) {
             }
             updateStats();
         }
+    }
+
+    // Captcha Request Match: CLIENT_PROGRESS:CAPTCHA_REQUEST:username:base64
+    const captchaReqMatch = logText.match(/CLIENT_PROGRESS:CAPTCHA_REQUEST:([^:]+):(.+)/);
+    if (captchaReqMatch) {
+        const username = captchaReqMatch[1].trim();
+        const base64 = captchaReqMatch[2].trim();
+        addCaptchaToQueue(username, base64);
+        return;
+    }
+
+    // Captcha Solved Match: CLIENT_PROGRESS:CAPTCHA_SOLVED:username
+    const captchaSolvedMatch = logText.match(/CLIENT_PROGRESS:CAPTCHA_SOLVED:([^:]+)/);
+    if (captchaSolvedMatch) {
+        const username = captchaSolvedMatch[1].trim();
+        removeCaptchaFromQueue(username);
+        return;
     }
 
     // Zip Pending Match: CLIENT_PROGRESS:ZIP_PENDING:username:month:readyAt:pendingSection
@@ -773,10 +803,142 @@ if (chkOnlyFailed) {
     });
 }
 
+// Captcha queue state
+let pendingCaptchaQueue = []; // array of { username, clientName, stateName, base64 }
+
+function addCaptchaToQueue(username, base64) {
+    const client = loadedClients.find(c => c.username === username) || { username, clientName: username };
+    
+    // Check if already in queue
+    const existingIdx = pendingCaptchaQueue.findIndex(c => c.username === username);
+    const captchaData = {
+        username,
+        clientName: client.clientName || username,
+        stateName: client.stateName || '',
+        base64
+    };
+    
+    if (existingIdx !== -1) {
+        pendingCaptchaQueue[existingIdx] = captchaData;
+    } else {
+        pendingCaptchaQueue.push(captchaData);
+    }
+    
+    renderCaptchaQueue();
+}
+
+function removeCaptchaFromQueue(username) {
+    pendingCaptchaQueue = pendingCaptchaQueue.filter(c => c.username !== username);
+    renderCaptchaQueue();
+}
+
+function renderCaptchaQueue() {
+    const container = document.getElementById('captcha-queue-container');
+    const panel = document.getElementById('captcha-panel');
+    const countBadge = document.getElementById('captcha-count-badge');
+    
+    if (!container || !panel) return;
+    
+    if (pendingCaptchaQueue.length === 0) {
+        panel.classList.add('hidden-panel');
+        container.innerHTML = '';
+        if (countBadge) countBadge.textContent = '0 pending';
+        return;
+    }
+    
+    panel.classList.remove('hidden-panel');
+    if (countBadge) countBadge.textContent = `${pendingCaptchaQueue.length} pending`;
+    
+    container.innerHTML = pendingCaptchaQueue.map((item, idx) => `
+        <div class="captcha-card" id="captcha-card-${item.username}">
+            <div class="captcha-card-header">
+                <span class="captcha-card-title">${item.clientName}</span>
+                <span class="captcha-card-state">${item.stateName}</span>
+            </div>
+            <div class="captcha-image-wrapper">
+                <img src="data:image/png;base64,${item.base64}" alt="Captcha">
+                <button class="captcha-refresh-btn" onclick="triggerCaptchaRefresh('${item.username}')" title="Refresh Captcha">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                    </svg>
+                </button>
+            </div>
+            <div class="captcha-input-group">
+                <input type="text" class="captcha-text-input" id="captcha-input-${item.username}" maxlength="6" placeholder="Enter code" autocomplete="off" onkeydown="handleCaptchaKeydown(event, '${item.username}')">
+                <button class="captcha-submit-btn" onclick="submitCaptchaSolve('${item.username}')">Submit</button>
+            </div>
+            <button class="btn btn-sm btn-danger" onclick="triggerCaptchaSkip('${item.username}')" style="margin-top: 4px; padding: 4px 8px; font-size: 0.8rem; width: 100%;">Skip Client</button>
+        </div>
+    `).join('');
+    
+    // Focus the first input automatically
+    const firstInput = container.querySelector('.captcha-text-input');
+    if (firstInput) {
+        firstInput.focus();
+    }
+}
+
+// Global functions exposed to window
+window.submitCaptchaSolve = (username) => {
+    const input = document.getElementById(`captcha-input-${username}`);
+    if (!input) return;
+    const text = input.value.trim().toUpperCase();
+    if (!text) return;
+    
+    window.electronAPI.submitCaptcha(username, text);
+    const card = document.getElementById(`captcha-card-${username}`);
+    if (card) {
+        card.style.opacity = '0.5';
+        card.style.pointerEvents = 'none';
+    }
+};
+
+window.handleCaptchaKeydown = (event, username) => {
+    if (event.key === 'Enter') {
+        window.submitCaptchaSolve(username);
+    }
+};
+
+window.triggerCaptchaRefresh = (username) => {
+    window.electronAPI.refreshCaptcha(username);
+    const card = document.getElementById(`captcha-card-${username}`);
+    if (card) {
+        card.style.opacity = '0.7';
+    }
+};
+
+window.triggerCaptchaSkip = (username) => {
+    window.electronAPI.skipClient(username);
+    const card = document.getElementById(`captcha-card-${username}`);
+    if (card) {
+        card.style.opacity = '0.5';
+        card.style.pointerEvents = 'none';
+    }
+};
+
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
     initializeDateOptions();
     renderClientsList(); // Display default "Please browse..." message
+
+    // Concurrency validation
+    const maxBrowsersInput = document.getElementById('select-browsers');
+    const warningLabel = document.getElementById('concurrency-warning');
+    if (maxBrowsersInput && warningLabel) {
+        maxBrowsersInput.addEventListener('input', () => {
+            let val = parseInt(maxBrowsersInput.value, 10);
+            if (isNaN(val) || val < 1) val = 1;
+            if (val > 6) {
+                val = 6;
+                maxBrowsersInput.value = 6;
+            }
+            if (val > 3) {
+                warningLabel.style.display = 'block';
+            } else {
+                warningLabel.style.display = 'none';
+            }
+        });
+    }
 });
 
 document.addEventListener('DOMContentLoaded', () => {

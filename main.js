@@ -235,6 +235,30 @@ ipcMain.on('stop-automation', () => {
     }
 });
 
+// IPC Listener to Submit Captcha to running script
+ipcMain.on('submit-captcha', (event, username, captchaText) => {
+    if (activeChildProcess && activeChildProcess.stdin) {
+        console.log(`Writing solved captcha for ${username} to child process stdin`);
+        activeChildProcess.stdin.write(`SOLVED_CAPTCHA:${username}:${captchaText}\n`);
+    }
+});
+
+// IPC Listener to Refresh Captcha in running script
+ipcMain.on('refresh-captcha', (event, username) => {
+    if (activeChildProcess && activeChildProcess.stdin) {
+        console.log(`Writing refresh captcha request for ${username} to child process stdin`);
+        activeChildProcess.stdin.write(`REFRESH_CAPTCHA:${username}\n`);
+    }
+});
+
+// IPC Listener to Skip Client in running script
+ipcMain.on('skip-client', (event, username) => {
+    if (activeChildProcess && activeChildProcess.stdin) {
+        console.log(`Writing skip client request for ${username} to child process stdin`);
+        activeChildProcess.stdin.write(`SKIP_CLIENT:${username}\n`);
+    }
+});
+
 // IPC Handler for Report Consolidation
 ipcMain.handle('run-consolidation', async (event, sourceDir) => {
     try {

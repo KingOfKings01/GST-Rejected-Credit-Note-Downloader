@@ -25,5 +25,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('consolidation-log', subscription);
         return () => ipcRenderer.removeListener('consolidation-log', subscription);
     },
-    showNativeNotification: (title, body) => ipcRenderer.send('show-native-notification', title, body)
+    showNativeNotification: (title, body) => ipcRenderer.send('show-native-notification', title, body),
+    submitCaptcha: (username, captchaText) => ipcRenderer.send('submit-captcha', username, captchaText),
+    refreshCaptcha: (username) => ipcRenderer.send('refresh-captcha', username),
+    skipClient: (username) => ipcRenderer.send('skip-client', username)
 });
