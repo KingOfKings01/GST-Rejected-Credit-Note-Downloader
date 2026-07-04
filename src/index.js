@@ -107,7 +107,7 @@ function populateFyToOptions() {
     
     selectFyTo.innerHTML = '';
     chronologicalYears.forEach(year => {
-        if (year >= fromYear) {
+        if (year >= fromYear + 1) {
             const option = document.createElement('option');
             option.value = year;
             option.textContent = year;
@@ -116,10 +116,10 @@ function populateFyToOptions() {
     });
     
     // Restore previous selection if valid
-    if (!isNaN(prevSelectedTo) && prevSelectedTo >= fromYear) {
+    if (!isNaN(prevSelectedTo) && prevSelectedTo >= fromYear + 1) {
         selectFyTo.value = prevSelectedTo;
     } else {
-        selectFyTo.value = fromYear;
+        selectFyTo.value = fromYear + 1;
     }
 }
 
@@ -182,16 +182,32 @@ function validatePeriodRange() {
     const toYear = parseInt(selectFyTo.value, 10);
     if (isNaN(fromYear) || isNaN(toYear)) return;
 
+    // Year To must always be strictly greater than Year From (Year To >= Year From + 1)
+    if (toYear < fromYear + 1) {
+        selectFyTo.value = fromYear + 1;
+        populateReturnPeriods();
+        return;
+    }
+
     const fromMonthIdx = CALENDAR_MONTHS.indexOf(selectPeriodFrom.value);
     const toMonthIdx = CALENDAR_MONTHS.indexOf(selectPeriodTo.value);
 
-    if (fromYear === toYear) {
+    // Compute absolute calendar year of the selection
+    const startCalendarYear = fromMonthIdx >= 3 ? fromYear : fromYear + 1;
+    const endCalendarYear = toMonthIdx >= 3 ? toYear - 1 : toYear;
+
+    // Compare chronologically
+    let isInvalid = false;
+    if (startCalendarYear > endCalendarYear) {
+        isInvalid = true;
+    } else if (startCalendarYear === endCalendarYear) {
         if (fromMonthIdx > toMonthIdx) {
-            selectPeriodTo.value = selectPeriodFrom.value;
+            isInvalid = true;
         }
-    } else if (fromYear > toYear) {
-        selectFyTo.value = fromYear;
-        populateReturnPeriods();
+    }
+
+    if (isInvalid) {
+        selectPeriodTo.value = selectPeriodFrom.value;
     }
 }
 
