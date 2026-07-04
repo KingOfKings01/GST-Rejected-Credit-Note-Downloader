@@ -39,6 +39,13 @@ const progressBar = document.getElementById('progress-bar');
 const progressPercentage = document.getElementById('progress-percentage');
 
 // 1. Dynamic Financial Years & Months Options
+const FISCAL_MONTHS = [
+    "April", "May", "June", "July", "August", "September",
+    "October", "November", "December", "January", "February", "March"
+];
+
+let chronologicalOptions = [];
+
 function initializeDateOptions() {
     const now = new Date();
     const currentYear = now.getFullYear();
@@ -53,51 +60,74 @@ function initializeDateOptions() {
         fyOptions.push(`${startYr}-${endYrAbbr}`);
     }
 
-    // Populate FY dropdowns
+    chronologicalOptions = [...fyOptions].reverse();
+
+    // Populate FY From dropdown
     selectFyFrom.innerHTML = '';
-    selectFyTo.innerHTML = '';
-    // To keep them in chronological order, reverse the fyOptions (they are generated current to past)
-    const chronologicalOptions = [...fyOptions].reverse();
-    
     chronologicalOptions.forEach(fy => {
         const optionFrom = document.createElement('option');
         optionFrom.value = fy;
-        optionFrom.textContent = fy;
+        optionFrom.textContent = fy.split('-')[0]; // Shows start calendar year e.g. "2025"
         selectFyFrom.appendChild(optionFrom);
-
-        const optionTo = document.createElement('option');
-        optionTo.value = fy;
-        optionTo.textContent = fy;
-        selectFyTo.appendChild(optionTo);
     });
 
-    // Populate months when FY changes or initially
-    selectFyFrom.addEventListener('change', populateReturnPeriods);
+    // Initial population of FY To and Return Periods
+    populateFyToOptions();
+    populateReturnPeriods();
+
+    // Set default selected index for From / To periods after first render
+    if (selectPeriodTo.options.length > 0) {
+        selectPeriodTo.selectedIndex = selectPeriodTo.options.length - 1;
+        selectPeriodFrom.selectedIndex = Math.max(0, selectPeriodTo.options.length - 3);
+    }
+
+    // Event Listeners for Dynamic Constraints
+    selectFyFrom.addEventListener('change', () => {
+        populateFyToOptions();
+        populateReturnPeriods();
+    });
+    
     selectFyTo.addEventListener('change', populateReturnPeriods);
     
-    selectPeriodFrom.addEventListener('change', () => {
-        if (selectPeriodFrom.selectedIndex > selectPeriodTo.selectedIndex) {
-            selectPeriodTo.selectedIndex = selectPeriodFrom.selectedIndex;
-        }
-    });
-    selectPeriodTo.addEventListener('change', () => {
-        if (selectPeriodFrom.selectedIndex > selectPeriodTo.selectedIndex) {
-            selectPeriodFrom.selectedIndex = selectPeriodTo.selectedIndex;
-        }
-    });
-
-    populateReturnPeriods();
+    selectPeriodFrom.addEventListener('change', validatePeriodRange);
+    selectPeriodTo.addEventListener('change', validatePeriodRange);
 }
 
-function populateReturnPeriods() {
-    const selectedFy = selectFyTo.value;
-    if (!selectedFy) return;
+function populateFyToOptions() {
+    const fromVal = selectFyFrom.value;
+    if (!fromVal) return;
+    const fromStartYear = parseInt(fromVal.split('-')[0], 10);
+    
+    const prevSelectedTo = selectFyTo.value;
+    
+    selectFyTo.innerHTML = '';
+    chronologicalOptions.forEach(fy => {
+        const startYear = parseInt(fy.split('-')[0], 10);
+        if (startYear >= fromStartYear) {
+            const optionTo = document.createElement('option');
+            optionTo.value = fy;
+            optionTo.textContent = fy.split('-')[0]; // Shows start calendar year e.g. "2026"
+            selectFyTo.appendChild(optionTo);
+        }
+    });
+    
+    // Restore previous selection if it is still valid
+    if (prevSelectedTo) {
+        const prevSelectedStartYear = parseInt(prevSelectedTo.split('-')[0], 10);
+        if (prevSelectedStartYear >= fromStartYear) {
+            selectFyTo.value = prevSelectedTo;
+            return;
+        }
+    }
+    selectFyTo.value = fromVal; // Default to match From year
+}
 
-    const parts = selectedFy.split('-');
+function getMonthsForFy(fy) {
+    if (!fy) return [];
+    const parts = fy.split('-');
     const startYear = parseInt(parts[0], 10);
     const endYear = 2000 + parseInt(parts[1], 10);
 
-    // List of months in Indian FY order (April to March)
     const baseMonths = [
         { name: "April", monthIndex: 3, year: startYear },
         { name: "May", monthIndex: 4, year: startYear },
@@ -114,10 +144,7 @@ function populateReturnPeriods() {
     ];
 
     const now = new Date();
-    
-    // Filter months: if a month is in the future relative to current time, exclude it
-    const filteredMonths = baseMonths.filter(month => {
-        // Compare year and month index
+    return baseMonths.filter(month => {
         if (month.year > now.getFullYear()) {
             return false;
         }
@@ -126,30 +153,59 @@ function populateReturnPeriods() {
         }
         return true;
     });
+}
 
-    // Populate Period Dropdowns
+function populateReturnPeriods() {
+    const fromFy = selectFyFrom.value;
+    const toFy = selectFyTo.value;
+    if (!fromFy || !toFy) return;
+
+    const monthsFrom = getMonthsForFy(fromFy);
+    const monthsTo = getMonthsForFy(toFy);
+
+    const prevSelectedFrom = selectPeriodFrom.value;
+    const prevSelectedTo = selectPeriodTo.value;
+
+    // Populate Period From
     selectPeriodFrom.innerHTML = '';
-    selectPeriodTo.innerHTML = '';
-    
-    // If all months are filtered out (shouldn't happen for past FY, only possible if system time is messed up)
-    const monthsToShow = filteredMonths.length > 0 ? filteredMonths : baseMonths;
-
-    monthsToShow.forEach(m => {
-        const optionFrom = document.createElement('option');
-        optionFrom.value = m.name;
-        optionFrom.textContent = m.name;
-        selectPeriodFrom.appendChild(optionFrom);
-
-        const optionTo = document.createElement('option');
-        optionTo.value = m.name;
-        optionTo.textContent = m.name;
-        selectPeriodTo.appendChild(optionTo);
+    monthsFrom.forEach(m => {
+        const option = document.createElement('option');
+        option.value = m.name;
+        option.textContent = m.name;
+        selectPeriodFrom.appendChild(option);
     });
+    if (monthsFrom.some(m => m.name === prevSelectedFrom)) {
+        selectPeriodFrom.value = prevSelectedFrom;
+    }
 
-    // Select latest available month by default for "To Period", and 3 months ago (or index length - 3) for "From Period"
-    if (selectPeriodTo.options.length > 0) {
-        selectPeriodTo.selectedIndex = selectPeriodTo.options.length - 1;
-        selectPeriodFrom.selectedIndex = Math.max(0, selectPeriodTo.options.length - 3);
+    // Populate Period To
+    selectPeriodTo.innerHTML = '';
+    monthsTo.forEach(m => {
+        const option = document.createElement('option');
+        option.value = m.name;
+        option.textContent = m.name;
+        selectPeriodTo.appendChild(option);
+    });
+    if (monthsTo.some(m => m.name === prevSelectedTo)) {
+        selectPeriodTo.value = prevSelectedTo;
+    }
+
+    validatePeriodRange();
+}
+
+function validatePeriodRange() {
+    const fromFy = selectFyFrom.value;
+    const toFy = selectFyTo.value;
+    if (!fromFy || !toFy) return;
+
+    if (fromFy === toFy) {
+        const fromIdx = FISCAL_MONTHS.indexOf(selectPeriodFrom.value);
+        const toIdx = FISCAL_MONTHS.indexOf(selectPeriodTo.value);
+        
+        if (fromIdx > toIdx) {
+            // Reset "To Period" to match "From Period" if reversed
+            selectPeriodTo.value = selectPeriodFrom.value;
+        }
     }
 }
 
