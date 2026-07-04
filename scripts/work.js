@@ -173,7 +173,15 @@ async function doGstWork(page, selections, downloadFolder, client, excelFilePath
         returnType: 'GSTR-1/IFF'
     };
 
-    const targetPeriodsQueue = getTargetPeriodsQueue(baseSearch);
+    let targetPeriodsQueue = getTargetPeriodsQueue(baseSearch);
+
+    if (client.excelFailedMonths) {
+        const failedMonths = client.excelFailedMonths.split(',').map(m => m.trim().toLowerCase());
+        if (failedMonths.length > 0 && failedMonths[0] !== '') {
+            console.log(`System: Found previously failed months for ${client.username}: ${client.excelFailedMonths}. Restricting execution to these months.`);
+            targetPeriodsQueue = targetPeriodsQueue.filter(p => failedMonths.includes(p.returnPeriod.toLowerCase()));
+        }
+    }
 
     const monthlyResults = [];
 

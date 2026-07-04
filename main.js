@@ -122,6 +122,7 @@ ipcMain.handle('parse-excel', async (event, customFilePath) => {
         const clients = rawData.map(row => {
             const excelStatus = (row['STATUS'] || '').toString().trim();
             const excelZipStatus = (row['ZIP STATUS'] || '').toString().trim();
+            const excelFailedMonths = (row['FAILED MONTHS'] || '').toString().trim();
             let status = 'pending';
             if (excelZipStatus.includes('Zip Pending')) {
                 status = 'zip_pending';
@@ -140,7 +141,8 @@ ipcMain.handle('parse-excel', async (event, customFilePath) => {
                 stateName: row['STATE NAME'] || '',
                 status: status,
                 excelStatus: excelStatus,
-                excelZipStatus: excelZipStatus
+                excelZipStatus: excelZipStatus,
+                excelFailedMonths: excelFailedMonths
             };
         }).filter(c => c.username && c.password);
 

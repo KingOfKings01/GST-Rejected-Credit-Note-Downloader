@@ -450,6 +450,16 @@ async function run() {
                     } else {
                         updateExcelClientStatus(excelFilePath, client.username, '', 'ZIP STATUS');
                     }
+
+                    const failedMonthsList = monthlyResults
+                        .filter(res => res.error)
+                        .map(res => res.month);
+                    
+                    if (failedMonthsList.length > 0) {
+                        updateExcelClientStatus(excelFilePath, client.username, failedMonthsList.join(', '), 'FAILED MONTHS');
+                    } else {
+                        updateExcelClientStatus(excelFilePath, client.username, '', 'FAILED MONTHS');
+                    }
                     
                     if (isZipPending) {
                         // Status remains zip_pending, do not overwrite to failed
